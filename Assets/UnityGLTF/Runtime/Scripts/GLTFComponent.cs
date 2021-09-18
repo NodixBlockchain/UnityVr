@@ -4,7 +4,6 @@ using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
-using System.Threading;
 using UnityEngine;
 using UnityGLTF.Loader;
 
@@ -127,21 +126,7 @@ namespace UnityGLTF
 				}
 				else
 				{
-                    /*
-                    		public int NodeTotal;
-		public int NodeLoaded;
-
-		public int TextureTotal;
-		public int TextureLoaded;
-
-		public int BuffersTotal;
-		public int BuffersLoaded;
-        */
-                    var innerProgress = new Progress<UnityGLTF.ImportProgress>(p => Debug.Log("buffer "+p.Progress));
-                    
-
-
-                    await sceneImporter.LoadSceneAsync(0, true, null, default(CancellationToken), innerProgress);
+					await sceneImporter.LoadSceneAsync();
 				}
 
 				// Override the shaders on all materials if a shader is provided
