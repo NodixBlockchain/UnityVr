@@ -12,7 +12,7 @@ GameObject:
   - component: {fileID: 2312739515409667567}
   - component: {fileID: 5399065716342452143}
   - component: {fileID: 4137337326654948175}
-  m_Layer: 2
+  m_Layer: 5
   m_Name: Button
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -132,7 +132,7 @@ GameObject:
   - component: {fileID: 3879034061853246467}
   - component: {fileID: 2502091125447676942}
   - component: {fileID: 3096277990420852333}
-  m_Layer: 2
+  m_Layer: 5
   m_Name: Text
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -211,7 +211,7 @@ GameObject:
   - component: {fileID: 4397573052174240228}
   - component: {fileID: 3710468139776470524}
   - component: {fileID: 4200758189400447957}
-  m_Layer: 2
+  m_Layer: 5
   m_Name: Text
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -291,7 +291,7 @@ GameObject:
   - component: {fileID: 7592430943543677081}
   - component: {fileID: 5824511818813834784}
   - component: {fileID: 4211448781847204757}
-  m_Layer: 2
+  m_Layer: 5
   m_Name: InputField
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -431,7 +431,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 4237072025565448360}
-  m_Layer: 2
+  m_Layer: 5
   m_Name: NewAddress
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -471,7 +471,7 @@ GameObject:
   - component: {fileID: 4715665129552975475}
   - component: {fileID: 810666672858210504}
   - component: {fileID: 8110671860289299833}
-  m_Layer: 2
+  m_Layer: 5
   m_Name: Placeholder
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -550,7 +550,7 @@ GameObject:
   - component: {fileID: 8286105242148596795}
   - component: {fileID: 5807035722684732472}
   - component: {fileID: 800379957924599096}
-  m_Layer: 2
+  m_Layer: 5
   m_Name: Text
   m_TagString: Untagged
   m_Icon: {fileID: 0}

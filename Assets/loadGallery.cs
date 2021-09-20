@@ -2,13 +2,18 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Net;
 using System.IO;
-using System.Runtime.Serialization.Formatters.Binary;
+using System.Xml.Serialization;
+using System.Text;
+using System;
 
 using Org.BouncyCastle.Asn1.X9;
 using Org.BouncyCastle.Crypto;
 using Org.BouncyCastle.Crypto.Generators;
 using Org.BouncyCastle.Crypto.Parameters;
+using Org.BouncyCastle.Crypto.Digests;
 using Org.BouncyCastle.Security;
+using Org.BouncyCastle.Math.EC;
+
 
 using UnityEngine;
 using GLTF;
@@ -44,12 +49,115 @@ public class Gallery
 [System.Serializable]
 public class WalletAddress
 {
+    public WalletAddress()
+    {
+        Name = null;
+        PubAddr = null;
+        PrivKey = null;
+    }
+
+
+
+    public WalletAddress(string name, AsymmetricCipherKeyPair keyPair)
+    {
+        Name = name;
+
+        ECPublicKeyParameters pub = (ECPublicKeyParameters)keyPair.Public;
+        ECPoint PubPoints = pub.Q;
+
+
+        byte[] X = PubPoints.AffineXCoord.ToBigInteger().ToByteArray();
+        byte[] Y = PubPoints.AffineYCoord.ToBigInteger().ToByteArray();
+
+        byte[] total = new byte[X.Length + Y.Length];
+
+        X.CopyTo(total, 0);
+        Y.CopyTo(total, X.Length);
+
+    
+        var digest = new RipeMD160Digest();
+        var result = new byte[digest.GetDigestSize()];
+        digest.BlockUpdate(total, 0, total.Length);
+        digest.DoFinal(result, 0);
+
+        PubAddr = base58FromByteArray(result);
+
+        PrivKey = base58FromByteArray(Org.BouncyCastle.Pkcs.PrivateKeyInfoFactory.CreatePrivateKeyInfo(keyPair.Private).ParsePrivateKey().GetDerEncoded());
+    }
+    
+
     public WalletAddress(string name, string pubAddr)
     {
         Name    = name;
         PubAddr = pubAddr;
         PrivKey = null;
     }
+
+
+    /// <summary>
+    /// Converts a base-58 string to a byte array, returning null if it wasn't valid.
+    /// </summary>
+    public static byte[] base58ToByteArray(string base58)
+    {
+        Org.BouncyCastle.Math.BigInteger bi2 = new Org.BouncyCastle.Math.BigInteger("0");
+        string b58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+
+        foreach (char c in base58)
+        {
+            if (b58.IndexOf(c) != -1)
+            {
+                bi2 = bi2.Multiply(new Org.BouncyCastle.Math.BigInteger("58"));
+                bi2 = bi2.Add(new Org.BouncyCastle.Math.BigInteger(b58.IndexOf(c).ToString()));
+            }
+            else
+            {
+                return null;
+            }
+        }
+
+        byte[] bb = bi2.ToByteArrayUnsigned();
+
+        // interpret leading '1's as leading zero bytes
+        foreach (char c in base58)
+        {
+            if (c != '1') break;
+            byte[] bbb = new byte[bb.Length + 1];
+            Array.Copy(bb, 0, bbb, 1, bb.Length);
+            bb = bbb;
+        }
+
+        return bb;
+    }
+
+    public static string base58FromByteArray(byte[] ba)
+    {
+        Org.BouncyCastle.Math.BigInteger addrremain = new Org.BouncyCastle.Math.BigInteger(1, ba);
+
+        Org.BouncyCastle.Math.BigInteger big0 = new Org.BouncyCastle.Math.BigInteger("0");
+        Org.BouncyCastle.Math.BigInteger big58 = new Org.BouncyCastle.Math.BigInteger("58");
+
+        string b58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+
+        string rv = "";
+
+        while (addrremain.CompareTo(big0) > 0)
+        {
+            int d = Convert.ToInt32(addrremain.Mod(big58).ToString());
+            addrremain = addrremain.Divide(big58);
+            rv = b58.Substring(d, 1) + rv;
+        }
+
+        // handle leading zeroes
+        foreach (byte b in ba)
+        {
+            if (b != 0) break;
+            rv = "1" + rv;
+
+        }
+        return rv;
+    }
+
+
     public string Name;
     public string PubAddr;
     public string PrivKey;
@@ -59,7 +167,6 @@ public class WalletAddress
 public class Wallet
 {
     private ECKeyPairGenerator generator;
-    private AsymmetricCipherKeyPair keyPair;
 
     public Wallet()
     {
@@ -74,38 +181,56 @@ public class Wallet
         generator = new ECKeyPairGenerator("ECDSA");
         generator.Init(keyParams);
 
-        keyPair = generator.GenerateKeyPair();
-
     }
+
+    public AsymmetricCipherKeyPair newKeyPair()
+    {
+        return generator.GenerateKeyPair();
+    }
+
     public void save()
     {
-        if (!Directory.Exists("Wallet"))
-            Directory.CreateDirectory("Wallet");
+        string basePath = Application.persistentDataPath + "/Wallet";
 
-        BinaryFormatter formatter = new BinaryFormatter();
-        FileStream walletFile = File.Create("Wallet/wallet.binary");
+        if (!Directory.Exists(basePath))
+            Directory.CreateDirectory(basePath);
 
-        formatter.Serialize(walletFile, addresses);
+        XmlSerializer serializer = new XmlSerializer(typeof(List<WalletAddress>));
+        StreamWriter writer = new StreamWriter(basePath  + "/wallet.xml");
+        serializer.Serialize(writer.BaseStream, addresses);
+        writer.Close();
 
-        walletFile.Close();
     }
 
     public void load()
     {
-        BinaryFormatter formatter = new BinaryFormatter();
+        string basePath = Application.persistentDataPath + "/Wallet";
 
 
-        if (File.Exists("Wallet/wallet.binary"))
+        if (File.Exists(basePath + "/wallet.xml"))
         {
-            FileStream walletFile = File.Open("Wallet/wallet.binary", FileMode.Open);
-            addresses = (List<WalletAddress>)formatter.Deserialize(walletFile);
-            walletFile.Close();
+
+            XmlSerializer serializer = new XmlSerializer(typeof(List<WalletAddress>));
+            StreamReader reader = new StreamReader(basePath + "/wallet.xml");
+            addresses = (List<WalletAddress>)serializer.Deserialize(reader.BaseStream);
+            reader.Close();
         }
         else
         {
-            addresses.Add(new WalletAddress("UnityApp", "BEp6dSARA711Mnb6UESa9Lkj8jtv7mcPoh"));
+            addresses.Add(new WalletAddress("UnityApp", "BPgb5m5HGtNMXrUX9w1a8FfRE1GdGLM8P4"));
             save();
         }
+
+        for(int n=0;n < addresses.Count;n++)
+        {
+            if(addresses[n].PrivKey != null)
+            {
+                return;
+            }
+        }
+
+        addresses.Add(new WalletAddress("Master", newKeyPair()));
+        save();
        
     }
 
@@ -276,6 +401,13 @@ public class loadGallery : MonoBehaviour
         if(emptyResult != null)
         {
             Destroy(emptyResult);
+            emptyResult = null;
+        }
+
+        if (newAddr != null)
+        {
+            Destroy(newAddr);
+            newAddr = null;
         }
 
         if (GalleriesButton != null)
@@ -284,6 +416,7 @@ public class loadGallery : MonoBehaviour
             {
                 Destroy(GalleriesButton[n]);
             }
+            GalleriesButton = null;
         }
 
         if (ItemsButton != null)
@@ -292,6 +425,7 @@ public class loadGallery : MonoBehaviour
             {
                 Destroy(ItemsButton[n]);
             }
+            ItemsButton = null;
         }
 
         if (NodesTexts != null)
@@ -300,6 +434,8 @@ public class loadGallery : MonoBehaviour
             {
                 Destroy(NodesTexts[n]);
             }
+
+            NodesTexts = null;
         }
 
         if (Headers != null)
@@ -308,33 +444,37 @@ public class loadGallery : MonoBehaviour
             {
                 Destroy(Headers[n]);
             }
+
+            Headers = null;
         }
 
         if (nodesTable.NodeRow != null)
         {
             for (int n = 0; n < nodesTable.NodeRow.Length; n++)
             {
-                for (int nn = 0; nn < nodesTable.Fields.Length; nn++)
+                for (int nn = 0; nn < nodesTable.NodeRow[n].Columns.Length; nn++)
                 {
                     Destroy(nodesTable.NodeRow[n].Columns[nn]);
                 }
+                nodesTable.NodeRow[n].Columns = null;
             }
+            nodesTable.NodeRow = null;
         }
       
         if (walletTable.NodeRow != null)
         {
             for (int n = 0; n < walletTable.NodeRow.Length; n++)
             {
-                for (int nn = 0; nn < walletTable.Fields.Length; nn++)
+                for (int nn = 0; nn < walletTable.NodeRow[n].Columns.Length; nn++)
                 {
                     Destroy(walletTable.NodeRow[n].Columns[nn]);
                 }
+                walletTable.NodeRow[n].Columns = null;
             }
+            walletTable.NodeRow = null;
         }
-        if(newAddr != null)
-        {
-            Destroy(newAddr);
-        }
+
+      
     }
 
     void GalleryMenuClicked() {
@@ -424,85 +564,157 @@ public class loadGallery : MonoBehaviour
             nodesTable.NodeRow[n].Columns[3].transform.SetParent(contentPanel.transform, false);
 
         }
+    }
 
+    void selectAddress(int locn, bool priv)
+    {
+        Debug.Log("addr sel " + wallet.addresses[locn].PubAddr);
+
+        galleriesAddress.GetComponentInChildren<InputField>().text = wallet.addresses[locn].PubAddr;
+
+        for (int n = 0; n < walletTable.NodeRow.Length; n++)
+        {
+            Destroy(walletTable.NodeRow[n].Columns[0].GetComponent<Outline>());
+            if (n == locn)
+            {
+                walletTable.NodeRow[n].Columns[0].AddComponent<Outline>();
+                walletTable.NodeRow[n].Columns[0].GetComponent<Outline>().effectColor = new Color(255, 0, 0, 255);
+                walletTable.NodeRow[n].Columns[0].GetComponent<Outline>().effectDistance = new Vector2(2, 2);
+                
+            }
+        }
+
+        if (newAddr != null)
+        {
+            Destroy(newAddr);
+            newAddr = null;
+        }
+
+
+        /*
+        walletTable.NodeRow[n].Columns[0].GetComponentInChildren<Text>();
+        walletTable.NodeRow[n].Columns[0].GetComponent<Button>().Select();
+        */
+    }
+
+    void addContactAddress()
+    {
+        string curAddr = galleriesAddress.GetComponentInChildren<InputField>().text;
+        string Label = newAddr.GetComponentInChildren<InputField>().text;
+
+        WalletAddress address = new WalletAddress(Label, curAddr);
+
+        wallet.addresses.Add(address);
+        wallet.save();
+        WalletMenuClicked();
 
     }
 
     void WalletMenuClicked() {
 
-        float startY = -60.0f;
+        float startY = -30.0f;
+        int nWallets, nContacts;
+        string curAddr = galleriesAddress.GetComponentInChildren<InputField>().text;
+        bool found;
 
         MenuItems[0].GetComponentInChildren<Renderer>().material = defaultSphereMat;
         MenuItems[1].GetComponentInChildren<Renderer>().material = defaultSphereMat;
         MenuItems[2].GetComponentInChildren<Renderer>().material = selectedSphereMat;
 
         ClearTabs();
-        newAddr = Instantiate(Resources.Load("NewAddress")) as GameObject;
-
-        newAddr.transform.SetParent(contentPanel.transform, false);
+      
 
        
 
-        Headers = new GameObject[walletTable.Fields.Length];
+        Headers = new GameObject[2];
 
-        for (int n = 0; n < walletTable.Fields.Length; n++)
-        {
-            Headers[n] = new GameObject();
+        Headers[0] = new GameObject();
 
-            Headers[n].AddComponent<Text>().text = walletTable.Fields[n];
-            Headers[n].GetComponent<Text>().font = textFont;
-            Headers[n].GetComponent<Text>().alignment = TextAnchor.MiddleCenter;
-            Headers[n].transform.position = new Vector3(StartPos[0] + walletTable.Size * n, startY+StartPos[1], 0.0f);
-            Headers[n].transform.localScale = new Vector3(0.4f, 1.0f, 1.0f);
-            Headers[n].transform.SetParent(contentPanel.transform, false);
-        }
+        Headers[0].AddComponent<Text>().text = "Wallet";
+        Headers[0].GetComponent<Text>().font = textFont;
+        Headers[0].GetComponent<Text>().alignment = TextAnchor.MiddleCenter;
+        Headers[0].transform.position = new Vector3(StartPos[0], startY + StartPos[1], 0.0f);
+        Headers[0].transform.localScale = new Vector3(0.4f, 1.0f, 1.0f);
+        Headers[0].transform.SetParent(contentPanel.transform, false);
 
-        walletTable.NodeRow = new NodeTableRow[Nodes.Count];
+        Headers[1] = new GameObject();
 
+        Headers[1].AddComponent<Text>().text = "Contacts";
+        Headers[1].GetComponent<Text>().font = textFont;
+        Headers[1].GetComponent<Text>().alignment = TextAnchor.MiddleCenter;
+        Headers[1].transform.position = new Vector3(StartPos[0] + 100.0f, startY + StartPos[1], 0.0f);
+        Headers[1].transform.localScale = new Vector3(0.4f, 1.0f, 1.0f);
+        Headers[1].transform.SetParent(contentPanel.transform, false);
+
+        walletTable.NodeRow = new NodeTableRow[wallet.addresses.Count];
+
+
+        nWallets = 0;
+        nContacts = 0;
+        found = false;
 
         for (int n = 0; n < wallet.addresses.Count; n++)
         {
+           
+
             walletTable.NodeRow[n] = new NodeTableRow();
+            walletTable.NodeRow[n].Columns = new GameObject[1];
 
-            walletTable.NodeRow[n].Columns = new GameObject[walletTable.Fields.Length];
-
-
-            walletTable.NodeRow[n].Columns[0] = new GameObject();
-            walletTable.NodeRow[n].Columns[0].AddComponent<Text>().text = wallet.addresses[n].Name;
-            walletTable.NodeRow[n].Columns[0].GetComponent<Text>().font = textFont;
-            walletTable.NodeRow[n].Columns[0].GetComponent<Text>().alignment = TextAnchor.MiddleCenter;
-
-            walletTable.NodeRow[n].Columns[0].transform.position = new Vector3(StartPos[0], startY + StartPos[1] + (n + 1) * Spacing[1], 0);
-            walletTable.NodeRow[n].Columns[0].transform.localScale = new Vector3(0.4f, 1.0f, 1.0f);
-            walletTable.NodeRow[n].Columns[0].transform.SetParent(contentPanel.transform, false);
-
-
-            walletTable.NodeRow[n].Columns[1] = new GameObject();
-            walletTable.NodeRow[n].Columns[1].AddComponent<Text>().text = wallet.addresses[n].PubAddr;
-            walletTable.NodeRow[n].Columns[1].GetComponent<Text>().font = textFont;
-            walletTable.NodeRow[n].Columns[1].GetComponent<Text>().alignment = TextAnchor.MiddleCenter;
-
-            walletTable.NodeRow[n].Columns[1].transform.position = new Vector3(StartPos[0] + walletTable.Size, startY + StartPos[1] + (n + 1) * Spacing[1], 0);
-            walletTable.NodeRow[n].Columns[1].transform.localScale = new Vector3(0.4f, 1.0f, 1.0f);
-            walletTable.NodeRow[n].Columns[1].transform.SetParent(contentPanel.transform, false);
-
-
-            walletTable.NodeRow[n].Columns[2] = new GameObject();
             if (wallet.addresses[n].PrivKey != null)
             {
-                walletTable.NodeRow[n].Columns[2].AddComponent<Text>().text = "local user";
+                walletTable.NodeRow[n].Columns[0] = Instantiate(Resources.Load("ButtonKey")) as GameObject;
+                if (walletTable.NodeRow[n].Columns[0] != null)
+                {
+                    int locn = n;
+                    
+
+                    walletTable.NodeRow[n].Columns[0].GetComponentInChildren<Text>().text = wallet.addresses[n].Name;
+                    walletTable.NodeRow[n].Columns[0].GetComponent<Button>().onClick.AddListener(() => selectAddress( locn, true));
+
+                    walletTable.NodeRow[n].Columns[0].transform.position = new Vector3(StartPos[0], startY + StartPos[1] + (nWallets + 1) * Spacing[1], 0);
+                    walletTable.NodeRow[n].Columns[0].transform.localScale = new Vector3(0.4f, 1.0f, 1.0f);
+                    walletTable.NodeRow[n].Columns[0].transform.SetParent(contentPanel.transform, false);
+
+                    nWallets++;
+                }
             }
             else
             {
-                walletTable.NodeRow[n].Columns[2].AddComponent<Text>().text = "peer";
+                walletTable.NodeRow[n].Columns[0] = Instantiate(Resources.Load("ButtonContact")) as GameObject;
+
+                if(walletTable.NodeRow[n].Columns[0] != null )
+                {
+                    int locn = n;
+                    
+                    walletTable.NodeRow[n].Columns[0].GetComponentInChildren<Text>().text = wallet.addresses[n].Name;
+                    walletTable.NodeRow[n].Columns[0].GetComponent<Button>().onClick.AddListener(() => selectAddress(locn, false));
+
+                    walletTable.NodeRow[n].Columns[0].transform.position = new Vector3(StartPos[0] + 100.0f, startY + StartPos[1] + (nContacts + 1) * Spacing[1], 0);
+                    walletTable.NodeRow[n].Columns[0].transform.localScale = new Vector3(0.4f, 1.0f, 1.0f);
+                    walletTable.NodeRow[n].Columns[0].transform.SetParent(contentPanel.transform, false);
+
+                    nContacts++;
+                }
             }
 
-            walletTable.NodeRow[n].Columns[2].GetComponent<Text>().font = textFont;
-            walletTable.NodeRow[n].Columns[2].GetComponent<Text>().alignment = TextAnchor.MiddleCenter;
+            if (curAddr == wallet.addresses[n].PubAddr)
+            {
+                walletTable.NodeRow[n].Columns[0].AddComponent<Outline>();
+                walletTable.NodeRow[n].Columns[0].GetComponent<Outline>().effectColor = new Color(255, 0, 0, 255);
+                walletTable.NodeRow[n].Columns[0].GetComponent<Outline>().effectDistance = new Vector2(2, 2);
 
-            walletTable.NodeRow[n].Columns[2].transform.position = new Vector3(StartPos[0]+ walletTable.Size * 2, startY + StartPos[1] + (n + 1) * Spacing[1], 0);
-            walletTable.NodeRow[n].Columns[2].transform.localScale = new Vector3(0.4f, 1.0f, 1.0f);
-            walletTable.NodeRow[n].Columns[2].transform.SetParent(contentPanel.transform, false);
+                found = true;
+            }
+        }
+
+        if(!found)
+        {
+            newAddr = Instantiate(Resources.Load("NewAddress")) as GameObject;
+
+            newAddr.GetComponentInChildren<Button>().onClick.AddListener(() => addContactAddress());
+
+
+            newAddr.transform.SetParent(contentPanel.transform, false);
         }
     }
 
@@ -544,10 +756,10 @@ public class loadGallery : MonoBehaviour
         {
             case UnityWebRequest.Result.ConnectionError:
             case UnityWebRequest.Result.DataProcessingError:
-                Debug.LogError("GALLERY LIST  " + myAddr + " : Error: " + webRequest.error);
+                Debug.Log("GALLERY LIST  " + myAddr + " : Error: " + webRequest.error);
                 break;
             case UnityWebRequest.Result.ProtocolError:
-                Debug.LogError("GALLERY LIST  " + myAddr + " : HTTP Error: " + webRequest.error);
+                Debug.Log("GALLERY LIST  " + myAddr + " : HTTP Error: " + webRequest.error);
                 break;
             case UnityWebRequest.Result.Success:
 
@@ -562,27 +774,47 @@ public class loadGallery : MonoBehaviour
                     {
                         Destroy(GalleriesButton[n]);
                     }
+
+                    GalleriesButton = null;
                 }
 
-                GalleriesButton = new GameObject[galleries.Length];
 
-                for (int n = 0; n < galleries.Length; n++)
+                if (galleries.Length > 0)
                 {
-                    string galleryHash = galleries[n].objHash;
+                    GalleriesButton = new GameObject[galleries.Length];
 
-                    GalleriesButton[n] = Instantiate(Resources.Load("ButtonGallery")) as GameObject;
-                    GalleriesButton[n].transform.position = new Vector3(StartPos[0] + n * Spacing[0], StartPos[1] + n * Spacing[1], 0);
+                    for (int n = 0; n < galleries.Length; n++)
+                    {
+                        string galleryHash = galleries[n].objHash;
 
-                    GalleriesButton[n].transform.SetParent(contentPanel.transform, false);
+                        GalleriesButton[n] = Instantiate(Resources.Load("ButtonGallery")) as GameObject;
+                        GalleriesButton[n].transform.position = new Vector3(StartPos[0] + n * Spacing[0], StartPos[1] + n * Spacing[1], 0);
 
-                    GalleriesButton[n].GetComponentInChildren<Text>().text = galleries[n].name;
-                    GalleriesButton[n].name = "gallery " + galleries[n].name;
+                        GalleriesButton[n].transform.SetParent(contentPanel.transform, false);
 
-                    GalleriesButton[n].GetComponent<Button>().onClick.AddListener(() => GalleryClicked(galleryHash));
+                        GalleriesButton[n].GetComponentInChildren<Text>().text = galleries[n].name;
+                        GalleriesButton[n].name = "gallery " + galleries[n].name;
+
+                        GalleriesButton[n].GetComponent<Button>().onClick.AddListener(() => GalleryClicked(galleryHash));
+                    }
+                }
+                else
+                {
+                    if(emptyResult != null)
+                        Destroy(emptyResult);
+
+                    emptyResult = new GameObject();
+                    emptyResult.AddComponent<Text>().text = "no gallaries for this address";
+                    emptyResult.GetComponent<Text>().font = textFont;
+                    emptyResult.GetComponent<Text>().alignment = TextAnchor.MiddleCenter;
+
+                    emptyResult.transform.position = new Vector3(ItemsStartPos[0], StartPos[1], 0.0f);
+                    emptyResult.transform.localScale = new Vector3(0.4f, 1.0f, 1.0f);
+
+                    emptyResult.transform.SetParent(contentPanel.transform, false);
                 }
 
 
-             
                 break;
         }
 
@@ -650,10 +882,12 @@ public class loadGallery : MonoBehaviour
                             itemX = ItemsStartPos[0];
                         }
                     }
-                    emptyResult = null;
                 }
                 else
                 {
+                    if(emptyResult!=null)
+                        Destroy(emptyResult);
+
                     emptyResult = new GameObject();
                     emptyResult.AddComponent<Text>().text = "no items";
                     emptyResult.GetComponent<Text>().font = textFont;
@@ -663,8 +897,6 @@ public class loadGallery : MonoBehaviour
                     emptyResult.transform.localScale = new Vector3(0.4f, 1.0f, 1.0f);
 
                     emptyResult.transform.SetParent(contentPanel.transform, false);
-
-                    ItemsButton = null;
                 }
 
                

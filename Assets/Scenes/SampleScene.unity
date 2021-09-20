@@ -574,8 +574,8 @@ MonoBehaviour:
   m_TargetGraphic: {fileID: 1328621061}
   m_HandleRect: {fileID: 1328621060}
   m_Direction: 3
-  m_Value: -0.000001565004
-  m_Size: 0.6093873
+  m_Value: 0.000000260834
+  m_Size: 0.61
   m_NumberOfSteps: 0
   m_OnValueChanged:
     m_PersistentCalls:
@@ -716,7 +716,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 0.000010214746, y: 117.00017}
+  m_AnchoredPosition: {x: 0.000010214746, y: 116.99998}
   m_SizeDelta: {x: 0, y: 300}
   m_Pivot: {x: 0, y: 1}
 --- !u!1 &633671885
@@ -1712,7 +1712,7 @@ MonoBehaviour:
   m_InteractionManager: {fileID: 26970757}
   m_InteractionLayerMask:
     serializedVersion: 2
-    m_Bits: 4294967295
+    m_Bits: 51
   m_AttachTransform: {fileID: 0}
   m_StartingSelectedInteractable: {fileID: 0}
   m_HoverEntered:
@@ -1788,7 +1788,7 @@ MonoBehaviour:
   m_SphereCastRadius: 0.1
   m_RaycastMask:
     serializedVersion: 2
-    m_Bits: 4294967295
+    m_Bits: 51
   m_RaycastTriggerInteraction: 1
   m_HitClosestOnly: 0
   m_KeepSelectedTargetValid: 1
@@ -2825,7 +2825,7 @@ MonoBehaviour:
   m_Content: {fileID: 595703408}
   m_Horizontal: 0
   m_Vertical: 1
-  m_MovementType: 1
+  m_MovementType: 0
   m_Elasticity: 0.1
   m_Inertia: 1
   m_DecelerationRate: 0.135
@@ -3029,7 +3029,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ba870d0ae9e02f14d9e394013215030b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  server: nodix.eu
+  server: 127.0.0.1:8001
   seedNodeAdress: nodix.eu
   seedNodePort: 16819
   address: BEp6dSARA711Mnb6UESa9Lkj8jtv7mcPoh
@@ -3719,7 +3719,7 @@ MonoBehaviour:
   m_InteractionManager: {fileID: 26970757}
   m_InteractionLayerMask:
     serializedVersion: 2
-    m_Bits: 4294967295
+    m_Bits: 51
   m_AttachTransform: {fileID: 0}
   m_StartingSelectedInteractable: {fileID: 0}
   m_HoverEntered:
@@ -3795,7 +3795,7 @@ MonoBehaviour:
   m_SphereCastRadius: 0.1
   m_RaycastMask:
     serializedVersion: 2
-    m_Bits: 4294967295
+    m_Bits: 51
   m_RaycastTriggerInteraction: 1
   m_HitClosestOnly: 0
   m_KeepSelectedTargetValid: 1
