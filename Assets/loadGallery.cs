@@ -1,11 +1,21 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Net;
+using System.IO;
+using System.Runtime.Serialization.Formatters.Binary;
+
+using Org.BouncyCastle.Asn1.X9;
+using Org.BouncyCastle.Crypto;
+using Org.BouncyCastle.Crypto.Generators;
+using Org.BouncyCastle.Crypto.Parameters;
+using Org.BouncyCastle.Security;
+
 using UnityEngine;
 using GLTF;
 using UnityEngine.UI;
 using UnityEngine.XR.Interaction.Toolkit;
 using UnityEngine.Networking;
+
 
 [System.Serializable]
 public class GalleryScene
@@ -31,6 +41,76 @@ public class Gallery
     public GalleryItem[] scenes;
 }
 
+[System.Serializable]
+public class WalletAddress
+{
+    public WalletAddress(string name, string pubAddr)
+    {
+        Name    = name;
+        PubAddr = pubAddr;
+        PrivKey = null;
+    }
+    public string Name;
+    public string PubAddr;
+    public string PrivKey;
+}
+
+[System.Serializable]
+public class Wallet
+{
+    private ECKeyPairGenerator generator;
+    private AsymmetricCipherKeyPair keyPair;
+
+    public Wallet()
+    {
+        addresses = new List<WalletAddress> ();
+
+        X9ECParameters curve = ECNamedCurveTable.GetByName("secp256k1");
+        ECDomainParameters domainParams = new ECDomainParameters(curve.Curve, curve.G, curve.N, curve.H, curve.GetSeed());
+
+        SecureRandom secureRandom = new SecureRandom();
+        ECKeyGenerationParameters keyParams = new ECKeyGenerationParameters(domainParams, secureRandom);
+
+        generator = new ECKeyPairGenerator("ECDSA");
+        generator.Init(keyParams);
+
+        keyPair = generator.GenerateKeyPair();
+
+    }
+    public void save()
+    {
+        if (!Directory.Exists("Wallet"))
+            Directory.CreateDirectory("Wallet");
+
+        BinaryFormatter formatter = new BinaryFormatter();
+        FileStream walletFile = File.Create("Wallet/wallet.binary");
+
+        formatter.Serialize(walletFile, addresses);
+
+        walletFile.Close();
+    }
+
+    public void load()
+    {
+        BinaryFormatter formatter = new BinaryFormatter();
+
+
+        if (File.Exists("Wallet/wallet.binary"))
+        {
+            FileStream walletFile = File.Open("Wallet/wallet.binary", FileMode.Open);
+            addresses = (List<WalletAddress>)formatter.Deserialize(walletFile);
+            walletFile.Close();
+        }
+        else
+        {
+            addresses.Add(new WalletAddress("UnityApp", "BEp6dSARA711Mnb6UESa9Lkj8jtv7mcPoh"));
+            save();
+        }
+       
+    }
+
+    public List<WalletAddress> addresses;
+}
 
 
 [System.Serializable]
@@ -66,9 +146,9 @@ public class NodeTableRow
 }
 
 
-public class NodeTable
+public class itemTable
 {
-    public NodeTable(string[] fields, float size)
+    public itemTable(string[] fields, float size)
     {
         Size = size;
 
@@ -113,11 +193,13 @@ public class loadGallery : MonoBehaviour
 
 
     private List<Node> Nodes;
-    private NodeTable nodesTable;
-
+    private itemTable nodesTable;
+    private itemTable walletTable;
     private GameObject[] Headers;
-
     private GameObject emptyResult;
+
+    private Wallet wallet;
+    private GameObject newAddr;
 
 
     public string server = "nodix.eu";
@@ -129,21 +211,35 @@ public class loadGallery : MonoBehaviour
     public Material selectedSphereMat;
     public Material defaultSphereMat;
 
-    public Vector2 StartPos = new Vector2(-60.0f, 60.0f);
+    public Vector2 StartPos = new Vector2(-50.0f, 0.0f);
     public Vector2 Spacing = new Vector2(0.0f, -40.0f);
 
-    public Vector2 ItemsStartPos = new Vector2(-10.0f, 60.0f);
+    public Vector2 ItemsStartPos = new Vector2(0.0f, 0.0f);
     public Vector2 ItemsSpacing = new Vector2(35.0f, -30.0f);
 
     public GameObject contentPanel;
     public Font textFont;
 
     GameObject buttonPrefab;
+    
+
+
+    void keyToPubAddr()
+    {
+
+    }
 
 
     // Start is called before the first frame update
     void Start()
     {
+
+
+        wallet = new Wallet();
+        wallet.load();
+
+
+
         galleriesAddress = GameObject.Find("Address Value");
         galleriesAddress.GetComponentInChildren<InputField>().text = address;
 
@@ -152,7 +248,8 @@ public class loadGallery : MonoBehaviour
         Nodes = new List<Node>();
         Nodes.Add(SeedNode);
 
-        nodesTable = new NodeTable(new string[] { "adress", "ip", "port", "ping" }, 35.0f);
+        nodesTable = new itemTable(new string[] { "adress", "ip", "port", "ping" }, 35.0f);
+        walletTable = new itemTable(new string[] { "label", "adress", "owner" }, 65.0f);
 
         if (selectedSphereMat != null)
         {
@@ -222,6 +319,21 @@ public class loadGallery : MonoBehaviour
                     Destroy(nodesTable.NodeRow[n].Columns[nn]);
                 }
             }
+        }
+      
+        if (walletTable.NodeRow != null)
+        {
+            for (int n = 0; n < walletTable.NodeRow.Length; n++)
+            {
+                for (int nn = 0; nn < walletTable.Fields.Length; nn++)
+                {
+                    Destroy(walletTable.NodeRow[n].Columns[nn]);
+                }
+            }
+        }
+        if(newAddr != null)
+        {
+            Destroy(newAddr);
         }
     }
 
@@ -318,10 +430,80 @@ public class loadGallery : MonoBehaviour
 
     void WalletMenuClicked() {
 
+        float startY = -60.0f;
+
         MenuItems[0].GetComponentInChildren<Renderer>().material = defaultSphereMat;
         MenuItems[1].GetComponentInChildren<Renderer>().material = defaultSphereMat;
         MenuItems[2].GetComponentInChildren<Renderer>().material = selectedSphereMat;
 
+        ClearTabs();
+        newAddr = Instantiate(Resources.Load("NewAddress")) as GameObject;
+
+        newAddr.transform.SetParent(contentPanel.transform, false);
+
+       
+
+        Headers = new GameObject[walletTable.Fields.Length];
+
+        for (int n = 0; n < walletTable.Fields.Length; n++)
+        {
+            Headers[n] = new GameObject();
+
+            Headers[n].AddComponent<Text>().text = walletTable.Fields[n];
+            Headers[n].GetComponent<Text>().font = textFont;
+            Headers[n].GetComponent<Text>().alignment = TextAnchor.MiddleCenter;
+            Headers[n].transform.position = new Vector3(StartPos[0] + walletTable.Size * n, startY+StartPos[1], 0.0f);
+            Headers[n].transform.localScale = new Vector3(0.4f, 1.0f, 1.0f);
+            Headers[n].transform.SetParent(contentPanel.transform, false);
+        }
+
+        walletTable.NodeRow = new NodeTableRow[Nodes.Count];
+
+
+        for (int n = 0; n < wallet.addresses.Count; n++)
+        {
+            walletTable.NodeRow[n] = new NodeTableRow();
+
+            walletTable.NodeRow[n].Columns = new GameObject[walletTable.Fields.Length];
+
+
+            walletTable.NodeRow[n].Columns[0] = new GameObject();
+            walletTable.NodeRow[n].Columns[0].AddComponent<Text>().text = wallet.addresses[n].Name;
+            walletTable.NodeRow[n].Columns[0].GetComponent<Text>().font = textFont;
+            walletTable.NodeRow[n].Columns[0].GetComponent<Text>().alignment = TextAnchor.MiddleCenter;
+
+            walletTable.NodeRow[n].Columns[0].transform.position = new Vector3(StartPos[0], startY + StartPos[1] + (n + 1) * Spacing[1], 0);
+            walletTable.NodeRow[n].Columns[0].transform.localScale = new Vector3(0.4f, 1.0f, 1.0f);
+            walletTable.NodeRow[n].Columns[0].transform.SetParent(contentPanel.transform, false);
+
+
+            walletTable.NodeRow[n].Columns[1] = new GameObject();
+            walletTable.NodeRow[n].Columns[1].AddComponent<Text>().text = wallet.addresses[n].PubAddr;
+            walletTable.NodeRow[n].Columns[1].GetComponent<Text>().font = textFont;
+            walletTable.NodeRow[n].Columns[1].GetComponent<Text>().alignment = TextAnchor.MiddleCenter;
+
+            walletTable.NodeRow[n].Columns[1].transform.position = new Vector3(StartPos[0] + walletTable.Size, startY + StartPos[1] + (n + 1) * Spacing[1], 0);
+            walletTable.NodeRow[n].Columns[1].transform.localScale = new Vector3(0.4f, 1.0f, 1.0f);
+            walletTable.NodeRow[n].Columns[1].transform.SetParent(contentPanel.transform, false);
+
+
+            walletTable.NodeRow[n].Columns[2] = new GameObject();
+            if (wallet.addresses[n].PrivKey != null)
+            {
+                walletTable.NodeRow[n].Columns[2].AddComponent<Text>().text = "local user";
+            }
+            else
+            {
+                walletTable.NodeRow[n].Columns[2].AddComponent<Text>().text = "peer";
+            }
+
+            walletTable.NodeRow[n].Columns[2].GetComponent<Text>().font = textFont;
+            walletTable.NodeRow[n].Columns[2].GetComponent<Text>().alignment = TextAnchor.MiddleCenter;
+
+            walletTable.NodeRow[n].Columns[2].transform.position = new Vector3(StartPos[0]+ walletTable.Size * 2, startY + StartPos[1] + (n + 1) * Spacing[1], 0);
+            walletTable.NodeRow[n].Columns[2].transform.localScale = new Vector3(0.4f, 1.0f, 1.0f);
+            walletTable.NodeRow[n].Columns[2].transform.SetParent(contentPanel.transform, false);
+        }
     }
 
     void loadGLTF(string hash)
@@ -468,6 +650,7 @@ public class loadGallery : MonoBehaviour
                             itemX = ItemsStartPos[0];
                         }
                     }
+                    emptyResult = null;
                 }
                 else
                 {

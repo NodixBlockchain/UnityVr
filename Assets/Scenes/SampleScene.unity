@@ -530,7 +530,7 @@ RectTransform:
   m_AnchorMax: {x: 1, y: 0}
   m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 20, y: 0}
-  m_Pivot: {x: 1, y: 1}
+  m_Pivot: {x: 1, y: 0}
 --- !u!114 &226110931
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -573,9 +573,9 @@ MonoBehaviour:
   m_Interactable: 1
   m_TargetGraphic: {fileID: 1328621061}
   m_HandleRect: {fileID: 1328621060}
-  m_Direction: 2
-  m_Value: 0
-  m_Size: 0.6099758
+  m_Direction: 3
+  m_Value: -0.000001565004
+  m_Size: 0.6093873
   m_NumberOfSteps: 0
   m_OnValueChanged:
     m_PersistentCalls:
@@ -716,7 +716,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 0, y: 116.999985}
+  m_AnchoredPosition: {x: 0.000010214746, y: 117.00017}
   m_SizeDelta: {x: 0, y: 300}
   m_Pivot: {x: 0, y: 1}
 --- !u!1 &633671885
@@ -2160,7 +2160,7 @@ MonoBehaviour:
   m_HandleRect: {fileID: 847801546}
   m_Direction: 0
   m_Value: 1
-  m_Size: 0.99999994
+  m_Size: 1
   m_NumberOfSteps: 0
   m_OnValueChanged:
     m_PersistentCalls:
@@ -2614,7 +2614,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 10303, guid: 0000000000000000f000000000000000, type: 0}
+  - {fileID: 2100000, guid: 5bf4695108605a84193f6132320e728e, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -2823,7 +2823,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_Content: {fileID: 595703408}
-  m_Horizontal: 1
+  m_Horizontal: 0
   m_Vertical: 1
   m_MovementType: 1
   m_Elasticity: 0.1
@@ -3039,11 +3039,11 @@ MonoBehaviour:
   - {fileID: 1502386406}
   selectedSphereMat: {fileID: 2100000, guid: 03fe9a4095b5ac44dbf4c2cd74c0da1d, type: 2}
   defaultSphereMat: {fileID: 2100000, guid: 9515a51a742bbfd428ec790f4fe3ec7e, type: 2}
-  StartPos: {x: -60, y: 60}
+  StartPos: {x: -50, y: 0}
   Spacing: {x: 0, y: -40}
-  ItemsStartPos: {x: -10, y: 60}
+  ItemsStartPos: {x: 0, y: 0}
   ItemsSpacing: {x: 35, y: -30}
-  contentPanel: {fileID: 1424027603}
+  contentPanel: {fileID: 595703407}
   textFont: {fileID: 10102, guid: 0000000000000000e000000000000000, type: 0}
 --- !u!114 &1555323790
 MonoBehaviour:
