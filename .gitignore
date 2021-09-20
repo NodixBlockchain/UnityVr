@@ -1,6 +1,7 @@
 Library/ShaderCache/*
 Library/PlayerDataCache/*
 Library/PackageCache/*
+Library/StateCache/*
 Library/Artifacts/*
 Temp/*
 Logs/*
