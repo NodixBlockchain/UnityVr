@@ -3,5 +3,8 @@ Library/PlayerDataCache/*
 Library/PackageCache/*
 Library/StateCache/*
 Library/Artifacts/*
+obj/Debug/*
 Temp/*
+.vs/*
 Logs/*
+*.so

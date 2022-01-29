@@ -32,8 +32,8 @@ public static class URIHelper
 	/// <returns>The name of directory file is in</returns>
 	public static string GetDirectoryName(string fullPath)
 	{
-		var fileName = Path.GetFileName(fullPath);
-		return fullPath.Substring(0, fullPath.Length - fileName.Length);
+        var fileName = Path.GetFileName(fullPath);
+        return fullPath.Substring(0, fullPath.Length - fileName.Length);
 	}
 
 	/// <summary>

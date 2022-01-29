@@ -66,7 +66,14 @@ namespace UnityGLTF
 
 		public async Task Load()
 		{
-			var importOptions = new ImportOptions
+            if (GLTFUri == null)
+            {
+                Debug.Log("no GLTFUri");
+                return;
+            }
+                
+
+            var importOptions = new ImportOptions
 			{
 				AsyncCoroutineHelper = gameObject.GetComponent<AsyncCoroutineHelper>() ?? gameObject.AddComponent<AsyncCoroutineHelper>()
 			};
@@ -99,6 +106,7 @@ namespace UnityGLTF
 				}
 				else
 				{
+
 					string directoryPath = URIHelper.GetDirectoryName(GLTFUri);
 					importOptions.DataLoader = new WebRequestLoader(directoryPath);
 
