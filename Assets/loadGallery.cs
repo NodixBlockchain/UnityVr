@@ -1110,8 +1110,44 @@ class WallSegment
     }
 
 
-    public void recompute(float height)
+    public double getAngle()
     {
+        double angle = 0.0;
+        Vector3 dir = getDirection();
+        dir.Normalize();
+
+        if (dir.sqrMagnitude > 0.001f)
+        {
+            angle = Math.Atan2(dir.x, dir.z);
+        }
+
+        return angle;
+    }
+
+
+    public Vector3[] getArray(float step)
+    {
+        Vector3 dir = getDirection();
+        float l = dir.magnitude;
+        int nstep = (int)Math.Floor(l / step);
+        Vector3[] ret = new Vector3[nstep];
+
+        step = l / nstep;
+        dir.Normalize();
+        Vector3 start = new Vector3(startCell.obj.transform.position.x + (dir.x * step / 2.0f), 0.0f, startCell.obj.transform.position.z + (dir.z * step / 2.0f));
+
+        for (int n = 0; n < nstep; n++)
+        {
+            ret[n] = new Vector3(start.x + n * dir.x * step, 0.0f, start.z + n * dir.z * step);
+        }
+
+        return ret;
+    }
+
+    public void recompute(float height, string URL)
+    {
+
+        this.defObj.SetActive(true);
         Vector3 delta = getDirection();
 
         this.defObj.transform.position = new Vector3(this.startCell.obj.transform.position.x + delta.x / 2.0f, this.startCell.obj.transform.position.y + height / 2.0f, this.startCell.obj.transform.position.z + delta.z / 2.0f);
@@ -1126,26 +1162,9 @@ class WallSegment
 
             this.defObj.transform.rotation = Quaternion.Euler(0.0f, (float)(langle * 180.0f / Math.PI), 0.0f);
         }
+        
     }
 
-
-    public Vector3[] getArray(float step)
-    {
-        Vector3 dir = getDirection();
-        float l = dir.magnitude;
-        int nstep = (int)Math.Ceiling(l / step);
-        Vector3[] ret= new Vector3[nstep];
-
-        dir.Normalize();
-
-        for (int n=0;n< nstep; n++)
-        {
-            ret[n] = new Vector3(startCell.obj.transform.position.x + n * dir.x * step, 0.0f, startCell.obj.transform.position.z + n * dir.z * step);
-        }
-
-        return ret;
-
-    }
 
 
 }
@@ -1154,8 +1173,7 @@ class WallSegment
 class cell
 {
     public GameObject obj;
-    public GameObject[] lines;
-
+    
     public int X;
     public int Y;
 }
@@ -1231,7 +1249,7 @@ class Grid
 
 
 
-    public class loadGallery : MonoBehaviour
+public class loadGallery : MonoBehaviour
 {
     [System.Serializable]
     private struct JsonArrayWrapper<T>
@@ -1275,6 +1293,10 @@ class Grid
     public GameObject contentPanel;
     public Font textFont;
 
+    public float wallHeight = 10.0f;
+    public float sensitivity = 10.0f;
+    public float speed = 500.0f;
+
     private Gallery myGallery;
     private const string baseURL = "/app/UnityApp";
     private Gallery[] galleries;
@@ -1300,7 +1322,6 @@ class Grid
     private Material lineMaterial;
     private GameObject EditWallPanel = null;
 
-
     private cell hoveredCell, selectedCell;
     private GameObject currentSeg, lastSeg;
     private List<WallSegment> wallSegments;
@@ -1309,9 +1330,17 @@ class Grid
     private Boolean EditRoomWall = false;
     private Boolean outScope = false;
 
-    private float wallHeight = 10.0f;
     private int SelectedWallSeg = -1;
     private int HoveredWallSeg = -1;
+
+    private Vector3 lastCamPos;
+    private GameObject roomFloor = null;
+
+    private float maxYAngle = 80f;
+    private Vector2 currentRotation;
+
+    private GameObject currentWallObj;
+    private string currentWallHash;
 
 
     SaveInfo makeSaveInfos()
@@ -1328,7 +1357,10 @@ class Grid
 
         return ret;
     }
-    
+
+    float lastSnapTime = 0.0f;
+    bool[] canSnap;
+
 
     // Start is called before the first frame update
     void Start()
@@ -1336,9 +1368,14 @@ class Grid
         wallet = new Wallet(this);
         wallet.load();
 
+        canSnap = new bool[2];
+
+        canSnap[0] = true;
+        canSnap[1] = true;
+        
+
         room = new vrRoom(this);
         roomMenu = null;
-
 
         galleriesAddress = GameObject.Find("Address Value");
         galleriesAddress.GetComponentInChildren<InputField>().text = address;
@@ -1363,17 +1400,37 @@ class Grid
             MenuItems[3].GetComponentInChildren<Renderer>().material = defaultSphereMat;
         }
 
-
         MenuItems[0].GetComponentInChildren<Button>().onClick.AddListener(() => RoomMenuClicked());
         MenuItems[1].GetComponentInChildren<Button>().onClick.AddListener(() => GalleryMenuClicked());
         MenuItems[2].GetComponentInChildren<Button>().onClick.AddListener(() => NodesMenuClicked());
         MenuItems[3].GetComponentInChildren<Button>().onClick.AddListener(() => WalletMenuClicked());
 
-        
-
-
-
         StartCoroutine(loadRooms());
+
+        /*
+        var log = Devices.CreateLogDevice("hlog.log"); // backing storage device
+
+        // hash table size (number of 64-byte buckets)
+        // log settings (devices, page size, memory size, etc.)
+        var store = new FasterKV<long, long>(1L << 20, new LogSettings { LogDevice = log } );
+
+        // Create a session per sequence of interactions with FASTER
+        // We use default callback functions with a custom merger: RMW merges input by adding it to value
+        var s = store.NewSession(new SimpleFunctions<long, long>((a, b) => a + b));
+        long key = 1, value = 1, input = 10, output = 0;
+
+        // Upsert and Read
+        s.Upsert(ref key, ref value);
+        s.Read(ref key, ref output);
+        Debug.Assert(output == value);
+
+        // Read-Modify-Write (add input to value)
+        s.RMW(ref key, ref input);
+        s.RMW(ref key, ref input);
+        s.Read(ref key, ref output);
+        Debug.Assert(output == value + 20);
+        */
+        //var Teleport = new Locom
         /*StartCoroutine(wallet.getnodepriv("BitAdmin", "B8mPBEg2XbYSUwEh5a7yrfehvMNijpAm1P"));*/
     }
 
@@ -1383,8 +1440,8 @@ class Grid
         {
             Destroy(roomMenu);
             roomMenu = null;
-
         }
+
         if (emptyResult != null)
         {
             Destroy(emptyResult);
@@ -1405,6 +1462,7 @@ class Grid
             }
             GalleriesButton = null;
         }
+
         if (RoomsButton != null)
         {
             for (int n = 0; n < RoomsButton.Length; n++)
@@ -1413,6 +1471,7 @@ class Grid
             }
             RoomsButton = null;
         }
+
         if (ItemsButton != null)
         {
             for (int n = 0; n < ItemsButton.Length; n++)
@@ -1428,7 +1487,6 @@ class Grid
             {
                 Destroy(NodesTexts[n]);
             }
-
             NodesTexts = null;
         }
 
@@ -1438,7 +1496,6 @@ class Grid
             {
                 Destroy(Headers[n]);
             }
-
             Headers = null;
         }
 
@@ -1467,8 +1524,6 @@ class Grid
             }
             walletTable.NodeRow = null;
         }
-
-      
     }
     
     
@@ -1484,7 +1539,6 @@ class Grid
         roomMenu = Instantiate(Resources.Load("Room Menu")) as GameObject;
 
         var panel = GameObject.Find("Panel");
-
         var newButton = roomMenu.transform.Find("New Button");
         var saveButton = roomMenu.transform.Find("Save Button");
 
@@ -1492,7 +1546,6 @@ class Grid
         {
             newButton.GetComponent<Button>().onClick.AddListener(() => newRoom());
         }
-        
 
         if (SaveButton != null)
         {
@@ -1502,7 +1555,6 @@ class Grid
         roomMenu.transform.SetParent(panel.transform, false);
 
         StartCoroutine(loadRooms());
-
     }
 
     void GalleryMenuClicked() {
@@ -1514,7 +1566,6 @@ class Grid
         ClearTabs();
 
         StartCoroutine(loadGalleries());
-
     }
 
 
@@ -1540,16 +1591,12 @@ class Grid
             Headers[n].transform.SetParent(contentPanel.transform, false);
         }
 
-
         nodesTable.NodeRow = new NodeTableRow[Nodes.Count];
-
 
         for (int n = 0; n < Nodes.Count; n++)
         {
             nodesTable.NodeRow[n] = new NodeTableRow();
-
             nodesTable.NodeRow[n].Columns = new GameObject[nodesTable.Fields.Length];
-
 
             nodesTable.NodeRow[n].Columns[0] = new GameObject();
             nodesTable.NodeRow[n].Columns[0].AddComponent<Text>().text = Nodes[n].address;
@@ -1581,7 +1628,6 @@ class Grid
             nodesTable.NodeRow[n].Columns[2].transform.SetParent(contentPanel.transform, false);
 
 
-
             nodesTable.NodeRow[n].Columns[3] = new GameObject();
             nodesTable.NodeRow[n].Columns[3].AddComponent<Text>().text = Nodes[n].ping.ToString();
             nodesTable.NodeRow[n].Columns[3].GetComponent<Text>().font = textFont;
@@ -1608,7 +1654,6 @@ class Grid
                 walletTable.NodeRow[n].Columns[0].AddComponent<Outline>();
                 walletTable.NodeRow[n].Columns[0].GetComponent<Outline>().effectColor = new Color(255, 0, 0, 255);
                 walletTable.NodeRow[n].Columns[0].GetComponent<Outline>().effectDistance = new Vector2(2, 2);
-                
             }
         }
 
@@ -1651,9 +1696,6 @@ class Grid
         MenuItems[3].GetComponentInChildren<Renderer>().material = selectedSphereMat;
 
         ClearTabs();
-      
-
-       
 
         Headers = new GameObject[2];
 
@@ -1684,8 +1726,6 @@ class Grid
 
         for (int n = 0; n < wallet.addresses.Count; n++)
         {
-           
-
             walletTable.NodeRow[n] = new NodeTableRow();
             walletTable.NodeRow[n].Columns = new GameObject[1];
 
@@ -1696,7 +1736,6 @@ class Grid
                 {
                     int locn = n;
                     
-
                     walletTable.NodeRow[n].Columns[0].GetComponentInChildren<Text>().text = wallet.addresses[n].Name;
                     walletTable.NodeRow[n].Columns[0].GetComponent<Button>().onClick.AddListener(() => selectAddress( locn, true));
 
@@ -1739,10 +1778,7 @@ class Grid
         if(!found)
         {
             newAddr = Instantiate(Resources.Load("NewAddress")) as GameObject;
-
             newAddr.GetComponentInChildren<Button>().onClick.AddListener(() => addContactAddress());
-
-
             newAddr.transform.SetParent(contentPanel.transform, false);
         }
     }
@@ -2207,128 +2243,18 @@ class Grid
         StartCoroutine(room.makeroom(makeSaveInfos()));
     }
 
-    public void ResetGrid()
-    {
-  
-        for (int n = 0; n < grid.cells.Length; n++)
-        {
-            Destroy(grid.cells[n].obj);
-            /*
-            Destroy(grid.cells[n].lines[0]);
-            Destroy(grid.cells[n].lines[1]);
-            */
-        }
-
-
-    }
-
-    void newRoom()
-    {
-        Debug.Log("new room" + room.sceneObjects.Count);
-
-        for (int n = 0; n < room.sceneObjects.Count; n++)
-        {
-            for (int i = 0; i < room.sceneObjects[n].objs.Count; i++)
-            {
-                Destroy(room.sceneObjects[n].objs[i].obj);
-            }
-            room.sceneObjects[n].objs = new List<objNode>();
-        }
-        room.sceneObjects = new List<gltfRef>();
-
-        if( wallSegments != null )
-        {
-            for (int n = 0; n < wallSegments.Count; n++)
-            {
-                Destroy(wallSegments[n].defObj);
-            }
-        }
-
-        if (grid != null)
-        {
-            ResetGrid();
-        }
-
-        if (EditWallPanel != null)
-            Destroy(EditWallPanel);
-
-        grid = new Grid(-10, -10, 20, 20, selectedSphereMat, SphereEditMat, defaultSphereMat);
-
-        wallSegments = new List<WallSegment>();
-
-        EditWallPanel = Instantiate(Resources.Load("EditWalls")) as GameObject;
-        GameObject.Find("ToggleWall").GetComponent<Toggle>().onValueChanged.AddListener(ToggleEditWalls);
-        GameObject.Find("ToggleRoom").GetComponent<Toggle>().onValueChanged.AddListener(ToggleEditRoom);
-
-        CreateWalls = true;
-        EditRoomWall = true;
-
-        var CameraOffset = GameObject.Find("Camera Offset");
-        CameraOffset.transform.position = new Vector3(-0, 100.0f, -80.0f);
-        CameraOffset.transform.rotation = Quaternion.Euler(new Vector3(45, 0, 0));
-
-        var floorPlane = GameObject.Find("FloorPlane");
-
-        if(floorPlane)
-            floorPlane.SetActive(false);
-    }
-
-    private GameObject currentWallObj;
-    private string currentWallHash;
-
-
-    void loadGLTF(string hash)
-    {
-        string URL = "http://" + server + baseURL;
-        string ou = URL + "/obj/" + hash;
-
-        Debug.Log("loading scene " + ou);
-
-        GameObject obj = new GameObject("Mesh "+ hash);
-        
-        obj.AddComponent<UnityGLTF.GLTFComponent>().GLTFUri = ou;
-        obj.GetComponent<UnityGLTF.GLTFComponent>().Timeout = 120;
-       
-
-        if(EditRoomWall)
-        {
-            if (currentWallObj != null)
-                Destroy(currentWallObj);
-
-            currentWallObj = obj;
-            currentWallHash = hash;
-
-            currentWallObj.transform.position = new Vector3(0.0f, 0.0f, -10.0f);
-            currentWallObj.transform.rotation = Quaternion.Euler(-45.0f, 0.0f, 0.0f);
-            currentWallObj.transform.localScale= new Vector3(20.0f , 20.0f , 20.0f);
-
-            var wallObj = GameObject.Find("WallObj");
-            currentWallObj.transform.SetParent(wallObj.transform, false);
-        }
-        else
-        {
-            room.addObj(obj, hash);
-
-            obj.AddComponent<Rigidbody>();
-            obj.AddComponent<XRGrabInteractable>();
-
-        }
-
-
-    }
-
 
     void loadScene(string hash)
     {
-        string URL = "http://" + server + baseURL;
-        string ou = URL + "/page/unity.site/scene/" + hash;
+        string URL = "http://" + server + baseURL + "/page/unity.site/scene/" + hash;
+        
 
-        Debug.Log("loading scene " + ou);
+        Debug.Log("loading scene " + URL);
 
         GameObject obj = new GameObject("Scene " + hash);
 
-        obj.AddComponent<UnityGLTF.GLTFComponent>().GLTFUri = ou;
-        obj.AddComponent<UnityGLTF.GLTFComponent>().Collider = UnityGLTF.GLTFSceneImporter.ColliderType.Box;
+        obj.AddComponent<UnityGLTF.GLTFComponent>().GLTFUri = URL;
+        obj.GetComponent<UnityGLTF.GLTFComponent>().Collider = UnityGLTF.GLTFSceneImporter.ColliderType.Box;
         obj.GetComponent<UnityGLTF.GLTFComponent>().Timeout = 120;
         obj.GetComponent<UnityGLTF.GLTFComponent>().transform.position = new Vector3(0.0f, 2.0f, 0.0f);
 
@@ -2337,7 +2263,6 @@ class Grid
         obj.AddComponent<XRGrabInteractable>();
 
         objNode on = new objNode(obj);
-
 
         for (int n = 0; n < room.sceneObjects.Count; n++)
         {
@@ -2351,6 +2276,44 @@ class Grid
         gltfRef myref = new gltfRef(hash);
         myref.objs.Add(on);
         room.sceneObjects.Add(myref);
+    }
+
+
+    void loadGLTF(string hash)
+    {
+        string URL = "http://" + server + baseURL + "/obj/" + hash;
+
+
+        Debug.Log("loading scene " + URL);
+
+        GameObject obj = new GameObject("Mesh " + hash);
+
+        obj.AddComponent<UnityGLTF.GLTFComponent>().GLTFUri = URL;
+        obj.GetComponent<UnityGLTF.GLTFComponent>().Timeout = 120;
+
+
+        if (EditRoomWall)
+        {
+            if (currentWallObj != null)
+                Destroy(currentWallObj);
+
+            currentWallObj = obj;
+            currentWallHash = hash;
+
+            currentWallObj.transform.position = new Vector3(0.0f, 0.0f, -10.0f);
+            currentWallObj.transform.rotation = Quaternion.Euler(-45.0f, 0.0f, 0.0f);
+            currentWallObj.transform.localScale = new Vector3(20.0f, 20.0f, 20.0f);
+
+            var wallObj = GameObject.Find("WallObj");
+            currentWallObj.transform.SetParent(wallObj.transform, false);
+        }
+        else
+        {
+            room.addObj(obj, hash);
+
+            obj.AddComponent<Rigidbody>();
+            obj.AddComponent<XRGrabInteractable>();
+        }
     }
 
     IEnumerator loadGalleries()
@@ -2437,7 +2400,6 @@ class Grid
 
     }
 
-  
     IEnumerator loadRooms()
     {
         string myAddr = galleriesAddress.GetComponentInChildren<InputField>().text;
@@ -2610,9 +2572,7 @@ class Grid
                
             break;
         }
-
     }
-
 
     IEnumerator loadRoom(string hash)
     {
@@ -2649,29 +2609,83 @@ class Grid
                     {
                         loadScene(mroom.objects[n].objHash);
                     }
-
                 }
-                break;
+             break;
         }
-
     }
 
     void RoomClicked(string hash)
     {
         Debug.Log("room " + hash + " selected");
-
         StartCoroutine(loadRoom(hash));
     }
 
     void GalleryClicked(string hash)
     {
         Debug.Log("gallery " + hash + " selected");
-
         StartCoroutine(loadWebGallery(hash));
     }
 
+    public void ResetGrid()
+    {
+        for (int n = 0; n < grid.cells.Length; n++)
+        {
+            Destroy(grid.cells[n].obj);
+        }
+    }
 
+    void roomEditor()
+    {
+        grid = new Grid(-10, -10, 20, 20, selectedSphereMat, SphereEditMat, defaultSphereMat);
 
+        EditWallPanel = Instantiate(Resources.Load("EditWalls")) as GameObject;
+        GameObject.Find("ToggleWall").GetComponent<Toggle>().onValueChanged.AddListener(ToggleEditWalls);
+        GameObject.Find("ToggleRoom").GetComponent<Toggle>().onValueChanged.AddListener(ToggleEditRoom);
+        GameObject.Find("ToggleSet").GetComponent<Toggle>().onValueChanged.AddListener(ToggleEditWall);
+
+        CreateWalls = true;
+        EditRoomWall = true;
+
+        var CameraOffset = GameObject.Find("Camera Offset");
+        CameraOffset.transform.position = new Vector3(-0, 100.0f, -80.0f);
+        CameraOffset.transform.rotation = Quaternion.Euler(new Vector3(45, 0, 0));
+
+        var floorPlane = GameObject.Find("FloorPlane");
+
+        if (floorPlane)
+            floorPlane.SetActive(false);
+    }
+
+    void newRoom()
+    {
+        for (int n = 0; n < room.sceneObjects.Count; n++)
+        {
+            for (int i = 0; i < room.sceneObjects[n].objs.Count; i++)
+            {
+                Destroy(room.sceneObjects[n].objs[i].obj);
+            }
+            room.sceneObjects[n].objs = new List<objNode>();
+        }
+        room.sceneObjects = new List<gltfRef>();
+
+        if (wallSegments != null)
+        {
+            for (int n = 0; n < wallSegments.Count; n++)
+            {
+                Destroy(wallSegments[n].defObj);
+            }
+        }
+
+        wallSegments = new List<WallSegment>();
+
+        if (grid != null)
+            ResetGrid();
+
+        if (EditWallPanel != null)
+            Destroy(EditWallPanel);
+
+        roomEditor();
+    }
 
     public int FindWallSegment(int x, int y)
     {
@@ -2684,7 +2698,6 @@ class Grid
                 return n;
             }
         }
-
         return -1;
     }
 
@@ -2695,9 +2708,8 @@ class Grid
         {
             currentSeg = GameObject.CreatePrimitive(PrimitiveType.Cube);
             currentSeg.GetComponentInChildren<Renderer>().material = wallSegMat;
-            currentSeg.GetComponent<BoxCollider>().isTrigger = true;
-            currentSeg.layer = 2;
             
+            currentSeg.layer = 6;
         }
 
         if (wallSegments.Count >= 2)
@@ -2706,10 +2718,8 @@ class Grid
             {
                 lastSeg = GameObject.CreatePrimitive(PrimitiveType.Cube);
                 lastSeg.GetComponentInChildren<Renderer>().material = wallSegMat;
-                lastSeg.GetComponent<BoxCollider>().isTrigger = true;
-                lastSeg.layer = 2;
+                lastSeg.layer = 6;
             }
-
 
             Vector3 ldelta = new Vector3(wallSegments[0].startCell.obj.transform.position.x - hoveredCell.obj.transform.position.x, 0.0f, wallSegments[0].startCell.obj.transform.position.z - hoveredCell.obj.transform.position.z);
 
@@ -2722,7 +2732,6 @@ class Grid
                 double langle;
 
                 langle = Math.Atan2(ldelta.x, ldelta.z);
-
                 lastSeg.transform.rotation = Quaternion.Euler(0.0f, (float)(langle * 180.0f / Math.PI), 0.0f);
             }
         }
@@ -2762,8 +2771,31 @@ class Grid
         wallSegments[seg2].endCell = hoveredCell;
 
 
-        wallSegments[seg1].recompute(wallHeight);
-        wallSegments[seg2].recompute(wallHeight);
+        string URL = null;
+        
+        if (wallSegments[seg1].gltfObjs != null)
+        {
+            URL = "http://" + server + baseURL + "/obj/" + wallSegments[seg1].gltfObjs.rootHash;
+           for (int i = 0; i < wallSegments[seg1].gltfObjs.objs.Count; i++)
+           {
+               Destroy(wallSegments[seg1].gltfObjs.objs[i].obj);
+           }
+        }
+   
+        wallSegments[seg1].recompute(wallHeight, URL);
+
+        if (wallSegments[seg2].gltfObjs != null)
+        {
+            URL = "http://" + server + baseURL + "/obj/" + wallSegments[seg2].gltfObjs.rootHash;
+            for (int i = 0; i < wallSegments[seg2].gltfObjs.objs.Count; i++)
+            {
+                Destroy(wallSegments[seg2].gltfObjs.objs[i].obj);
+            }
+        }
+
+        wallSegments[seg2].recompute(wallHeight, URL);
+       
+
     }
 
     void MakeLastSeg()
@@ -2772,8 +2804,7 @@ class Grid
         {
             var newSegObj = GameObject.CreatePrimitive(PrimitiveType.Cube);
             newSegObj.GetComponentInChildren<Renderer>().material = wallSegMat;
-            newSegObj.GetComponent<BoxCollider>().isTrigger = true;
-            newSegObj.layer = 2;
+            newSegObj.layer = 6;
 
             Vector3 ldelta = new Vector3(wallSegments[0].startCell.obj.transform.position.x - wallSegments[wallSegments.Count - 1].endCell.obj.transform.position.x, 0.0f, wallSegments[0].startCell.obj.transform.position.z - wallSegments[wallSegments.Count - 1].endCell.obj.transform.position.z);
 
@@ -2885,18 +2916,8 @@ class Grid
         }
 
         center = min + (max - min) / 2.0f;
-
-        Debug.Log(" min " + min);
-        Debug.Log(" max " + max);
-
-        Debug.Log(" center " + center);
-
-
-
         return center;
     }
-
-    GameObject roomFloor = null;
 
     Vector2[] computeUvs(Vector3[] vertices)
     {
@@ -2943,7 +2964,8 @@ class Grid
 
 
     }
- 
+ 
+
     void createFloor()
     {
         if (roomFloor != null)
@@ -2980,15 +3002,6 @@ class Grid
             triangles[n * 3 + 2] = 0;
         }
 
-        for (int n = 0; n < vertices.Length; n++)
-        {
-            Debug.Log(" vertices " +n + " "+ vertices[n]);
-        }
-
-        for (int n = 0; n < triangles.Length; n++)
-        {
-            Debug.Log(" triangles " + n + " " + triangles[n]);
-        }
 
         mesh.vertices = vertices;
         mesh.uv = computeUvs(vertices);
@@ -2997,26 +3010,11 @@ class Grid
 
         roomFloor.GetComponent<MeshFilter>().mesh = mesh;
         roomFloor.AddComponent<MeshCollider>().sharedMesh = mesh;
-        //roomFloor.AddComponent<Rigidbody>();
+        roomFloor.AddComponent<TeleportationArea>();
+
         roomFloor.transform.position = new Vector3(0.0f, -1.0f, 0.0f);
 
-        for (int n = 0; n < wallSegments.Count; n++)
-        {
-            //wallSegments[n].defObj.AddComponent<BoxCollider>().size= wallSegments[n].defObj.transform.localScale;
-
-            //wallSegments[n].defObj.AddComponent<Rigidbody>();
-
-
-            if (wallSegments[n].gltfObjs != null)
-            {
-                for (int nn = 0; nn < wallSegments[n].gltfObjs.objs.Count; nn++)
-                {
-                    wallSegments[n].gltfObjs.objs[nn].obj.AddComponent<BoxCollider>().size = new Vector3(1.0f, 1.0f, 1.0f);
-                    /*wallSegments[n].gltfObjs.objs[nn].obj.AddComponent<Rigidbody>().useGravity=false;*/
-                }
-            }
-        }
-
+       
         var CameraOffset = GameObject.Find("Camera Offset");
         CameraOffset.transform.position = new Vector3(vertices[0].x, 1.0f , vertices[0].z);
         CameraOffset.transform.rotation = Quaternion.Euler(new Vector3(-12.0f, 0, 0));
@@ -3037,7 +3035,13 @@ class Grid
 
             EditRoomWall = false;
 
-            GameObject.Find("ToggleWall").GetComponent<Toggle>().enabled = false;
+            var rightCont = GameObject.Find("RightHand Controller");
+            if (rightCont != null)
+            {
+                XRRayInteractor xrri = rightCont.GetComponent<XRRayInteractor>();
+                xrri.raycastMask = LayerMask.GetMask("Default") | LayerMask.GetMask("Walls") | LayerMask.GetMask("UI");
+            }
+                
         }
         else
         {
@@ -3047,58 +3051,188 @@ class Grid
 
             GameObject.Find("ToggleWall").GetComponent<Toggle>().enabled = true;
         }
-            
-
-        
     }
 
+    int prevLayerMask;
+    bool SetWallObj;
+    bool lastTrigger;
+    bool hasHeadset;
+
+
+    void ToggleEditWall(bool state)
+    {
+        var rightCont = GameObject.Find("RightHand Controller");
+
+        if (state)
+        {
+            if (rightCont != null)
+            {
+                XRRayInteractor xrri = rightCont.GetComponent<XRRayInteractor>();
+                prevLayerMask = xrri.raycastMask;
+                xrri.raycastMask = LayerMask.GetMask("Walls") | LayerMask.GetMask("UI");
+            }
+
+            GameObject.Find("ToggleWall").GetComponent<Toggle>().isOn = false;
+            SetWallObj = true;
+
+        }
+        else
+        {
+            SetWallObj = false;
+            if (rightCont != null)
+            {
+                XRRayInteractor xrri = rightCont.GetComponent<XRRayInteractor>();
+                xrri.raycastMask = prevLayerMask;
+            }
+        }
+    }
 
     void ToggleEditWalls(bool state)
     {
-        if (CreateWalls)
+        var rightCont = GameObject.Find("RightHand Controller");
+
+        if (rightCont != null)
+        {
+            XRRayInteractor xrri = rightCont.GetComponent<XRRayInteractor>();
+            xrri.raycastMask = LayerMask.GetMask("Default") | LayerMask.GetMask("UI");
+        }
+
+        if (!state)
         {
             DisableCreateWalls();
         }
         else
         {
+            GameObject.Find("ToggleSet").GetComponent<Toggle>().isOn = false;
             EnableCreateWalls();
         }
+    }
+
+     
+  
+    bool hasHMD()
+    {
+        var HMDControllers = new List<UnityEngine.XR.InputDevice>();
+        var desiredCharacteristics = UnityEngine.XR.InputDeviceCharacteristics.HeadMounted;
+        UnityEngine.XR.InputDevices.GetDevicesWithCharacteristics(desiredCharacteristics, HMDControllers);
+
+        if (HMDControllers.Count > 0)
+            return true;
+        else
+            return false;
     }
 
     void updateGrid()
     {
         Boolean button = false;
-
+        
         RaycastHit hit = new RaycastHit();
+        GameObject hitObj = null;
 
-        var ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+        hasHeadset = hasHMD();
 
-        button = Input.GetMouseButtonDown(0);
 
-        if ((button) && (hoveredCell != null))
+        List<UnityEngine.XR.InputDevice> devices = new List<UnityEngine.XR.InputDevice>();
+
+        UnityEngine.XR.InputDevices.GetDevicesWithRole(UnityEngine.XR.InputDeviceRole.RightHanded, devices);
+
+        foreach (var device in devices)
+        {
+            bool Trigger;
+
+            if (device.TryGetFeatureValue(UnityEngine.XR.CommonUsages.triggerButton, out Trigger))
+            {
+                if (Trigger != lastTrigger)
+                    button = Trigger;
+
+                lastTrigger = Trigger;
+            }
+        }
+
+    
+        if(!button)    
+            button = Input.GetMouseButtonDown(0);
+
+        if (button) 
         {
             if (selectedCell != null)
                 selectedCell.obj.GetComponentInChildren<Renderer>().material = defaultSphereMat;
 
             if (CreateWalls)
             {
-                if (currentSeg != null)
+                if (hoveredCell != null)
                 {
-                    WallSegment seg = new WallSegment();
+                    if (currentSeg != null)
+                    {
+                        WallSegment seg = new WallSegment();
 
-                    seg.defObj = currentSeg;
-                    seg.startCell = selectedCell;
-                    seg.endCell = hoveredCell;
+                        seg.defObj = currentSeg;
+                        seg.startCell = selectedCell;
+                        seg.endCell = hoveredCell;
 
-                    seg.defObj.name = "Wall " + wallSegments.Count;
+                        seg.defObj.name = "Wall " + wallSegments.Count;
 
-                    wallSegments.Add(seg);
+                        wallSegments.Add(seg);
 
-                    currentSeg = null;
+                        currentSeg = null;
+                    }
+
+                    selectedCell = hoveredCell;
+                    selectedCell.obj.GetComponentInChildren<Renderer>().material = selectedSphereMat;
                 }
+            }
+            else if (SetWallObj)
+            {
+                if ((HoveredWallSeg < 0) && (currentWallObj != null))
+                {
+                    hitObj = null;
 
-                selectedCell = hoveredCell;
-                selectedCell.obj.GetComponentInChildren<Renderer>().material = selectedSphereMat;
+                    if (hasHeadset)
+                    {
+                        var rightCont = GameObject.Find("RightHand Controller");
+                        if (rightCont != null)
+                        {
+                            XRRayInteractor xrri = rightCont.GetComponent<XRRayInteractor>();
+                            if (xrri.TryGetCurrent3DRaycastHit(out hit))
+                                hitObj = hit.collider.gameObject;
+                        }
+                    }
+                    else
+                    {
+                        Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+                        if (Physics.Raycast(ray, out hit, 1000.0f, LayerMask.GetMask("Walls")))
+                            hitObj = hit.collider.gameObject;
+                    }
+
+
+                    if (hitObj != null)
+                    {
+                        int segNum = Int32.Parse(hitObj.name.Substring(5));
+                        Vector3[] pos = wallSegments[segNum].getArray(10.0f);
+                        double angle = wallSegments[segNum].getAngle();
+
+                        float scaleZ = wallSegments[segNum].getDirection().magnitude/(10.0f * pos.Length);
+
+                        wallSegments[segNum].gltfObjs = new gltfRef(currentWallHash);
+
+                        for (int n = 0; n < pos.Length; n++)
+                        {
+                            objNode node = new objNode(GameObject.Instantiate<GameObject>(currentWallObj));
+                            var mesh = currentWallObj.GetComponentInChildren<MeshFilter>().mesh;
+
+                            node.obj.transform.position = new Vector3(pos[n].x, -mesh.bounds.min.y, pos[n].z);
+                            node.obj.transform.localScale = new Vector3(10.0f * scaleZ, 10.0f, 10.0f );
+                            node.obj.transform.rotation = Quaternion.Euler(new Vector3(0, (float)((angle * 180.0) / Math.PI) + 90.0f, 0));
+
+                            node.obj.AddComponent<BoxCollider>().size = mesh.bounds.size;
+
+                            wallSegments[segNum].gltfObjs.objs.Add(node);
+                        }
+
+                        wallSegments[segNum].defObj.SetActive(false);
+                    }
+
+                }
             }
             else
             {
@@ -3106,51 +3240,11 @@ class Grid
                     SelectedWallSeg = HoveredWallSeg;
                 else
                     SelectedWallSeg = -1;
-
-                if ((HoveredWallSeg < 0)&&(currentWallObj != null))
-                {
-                    int layerMask = 1 << 2;
-
-                    if (Physics.Raycast(ray, out hit, 1000.0f, layerMask))
-                    {
-                        if (hit.collider.gameObject != null)
-                        {
-                            Debug.Log(hit.collider.gameObject.name);
-                            String wallNum = hit.collider.gameObject.name.Substring(5);
-                            int segNum = Int32.Parse(wallNum);
-                            Vector3[] pos;
-
-                            Debug.Log("wall seg '" + hit.collider.gameObject.name + "' " + segNum);
-
-                            pos = wallSegments[segNum].getArray(10.0f);
-
-                            wallSegments[segNum].gltfObjs = new gltfRef(currentWallHash);
-
-                            for (int n = 0; n < pos.Length; n++)
-                            {
-                                objNode node = new objNode(GameObject.Instantiate<GameObject>(currentWallObj));
-                                var mesh = currentWallObj.GetComponentInChildren<MeshFilter>().mesh;
-
-                                node.obj.transform.position = new Vector3(pos[n].x, -mesh.bounds.min.y, pos[n].z);
-                                node.obj.transform.localScale = new Vector3(10.0f, 10.0f, 10.0f);
-                                node.obj.transform.rotation = Quaternion.Euler(new Vector3(0, 0, 0));
-
-                               
-
-                                wallSegments[segNum].gltfObjs.objs.Add(node);
-
-                            }
-
-                            wallSegments[segNum].defObj.SetActive(false);
-
-                            //getArray()
-
-
-                        }
-                    }
-                }
             }
         }
+
+        if (selectedCell != null)
+            selectedCell.obj.GetComponentInChildren<Renderer>().material = selectedSphereMat;
 
         if (hoveredCell != null)
         {
@@ -3158,15 +3252,33 @@ class Grid
             hoveredCell = null;
         }
 
-        if (selectedCell != null)
-            selectedCell.obj.GetComponentInChildren<Renderer>().material = selectedSphereMat;
 
+        hitObj = null;
 
-
-
-        if (Physics.Raycast(ray, out hit))
+        if (hasHeadset)
         {
+            var rightCont = GameObject.Find("RightHand Controller");
+            if (rightCont != null)
+            {
+                XRRayInteractor xrri = rightCont.GetComponent<XRRayInteractor>();
+                if (xrri.TryGetCurrent3DRaycastHit(out hit))
+                {
+                    hitObj = hit.collider.gameObject;
+                }
+            }
+        }
+        else
+        {
+            Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
 
+            if (Physics.Raycast(ray, out hit, 1000.0f, LayerMask.GetMask("Default")))
+            {
+                hitObj = hit.collider.gameObject;
+            }
+        }
+
+        if (hitObj != null)
+        { 
             if (outScope == true)
             {
                 if (CreateWalls)
@@ -3176,44 +3288,7 @@ class Grid
                 outScope = false;
             }
 
-            if (hit.collider.gameObject != null)
-                hoveredCell = grid.FindCellByName(hit.collider.gameObject.name);
-            else
-                hoveredCell = null;
-
-            if (hoveredCell != null)
-            {
-                int myx = hoveredCell.X;
-                int myy = hoveredCell.Y;
-
-                hoveredCell.obj.GetComponentInChildren<Renderer>().material = selectedSphereMat;
-
-                if (CreateWalls)
-                {
-                    if (selectedCell != null)
-                        computeNewSeg();
-                }
-                else
-                {
-                    if (SelectedWallSeg < 0)
-                    {
-                        HoveredWallSeg = FindWallSegment(myx, myy);
-
-                        if (HoveredWallSeg >= 0)
-                        {
-                            hoveredCell.obj.GetComponentInChildren<Renderer>().material = SphereEditMat;
-                        }
-                    }
-                    else
-                    {
-                        updateWallSeg(SelectedWallSeg);
-                    }
-                }
-            }
-            else
-            {
-                hoveredCell = null;
-            }
+            hoveredCell = grid.FindCellByName(hitObj.name);
         }
         else
         {
@@ -3225,15 +3300,42 @@ class Grid
                 outScope = true;
             }
         }
+
+
+        if (hoveredCell != null)
+        {
+            int myx = hoveredCell.X;
+            int myy = hoveredCell.Y;
+
+            hoveredCell.obj.GetComponentInChildren<Renderer>().material = selectedSphereMat;
+
+            if (CreateWalls)
+            {
+                if (selectedCell != null)
+                    computeNewSeg();
+            }
+            else
+            {
+                if (SelectedWallSeg < 0)
+                {
+                    HoveredWallSeg = FindWallSegment(myx, myy);
+
+                    if (HoveredWallSeg >= 0)
+                    {
+                        hoveredCell.obj.GetComponentInChildren<Renderer>().material = SphereEditMat;
+                    }
+                }
+                else
+                {
+                    updateWallSeg(SelectedWallSeg);
+                }
+            }
+        }
+
     }
 
-    float sensitivity = 10.0f;
-    float speed = 5.0f;
-    Vector3 lastCamPos;
-
     
-    public float maxYAngle = 80f;
-    private Vector2 currentRotation;
+
 
     // Update is called once per frame
     void Update()
@@ -3243,15 +3345,47 @@ class Grid
         else
         {
             var Cam = GameObject.Find("Camera Offset");
-            Vector3 dir = Cam.transform.rotation * Vector3.forward;
-            dir.y = 0.0f;
 
-            Vector3 dir2 =  Quaternion.Euler(0.0f, 90.0f, 0.0f)*dir;
-            Vector3 lastPos;
+            for (int cc = 0; cc < 2; cc++)
+            {
+                var HandControllers = new List<UnityEngine.XR.InputDevice>();
+                var desiredCharacteristics = UnityEngine.XR.InputDeviceCharacteristics.HeldInHand;
 
-            
+                if (cc == 0)
+                    desiredCharacteristics |= UnityEngine.XR.InputDeviceCharacteristics.Left;
+                else
+                    desiredCharacteristics |= UnityEngine.XR.InputDeviceCharacteristics.Right;
 
-            lastPos = new Vector3(Cam.transform.position.x, Cam.transform.position.y, Cam.transform.position.z);
+                UnityEngine.XR.InputDevices.GetDevicesWithCharacteristics(desiredCharacteristics, HandControllers);
+
+                foreach (var device in HandControllers)
+                {
+                    Vector2 Axis;
+                    if (device.TryGetFeatureValue(UnityEngine.XR.CommonUsages.primary2DAxis, out Axis))
+                    {
+                        if (canSnap[cc])
+                        {
+                            if (Axis.x < -0.5f)
+                            {
+                                currentRotation.x -= 45.0f;
+                                canSnap[cc] = false;
+                            }
+
+                            if (Axis.x > 0.5f)
+                            {
+                                currentRotation.x += 45.0f;
+                                canSnap[cc] = false;
+                            }
+                        }
+
+                        if (Axis.magnitude < 0.5f)
+                            canSnap[cc] = true;
+                    }
+                }
+
+                lastSnapTime = Time.fixedUnscaledTime;
+            }
+
 
             currentRotation.x += Input.GetAxis("Mouse X") * sensitivity;
             currentRotation.y -= Input.GetAxis("Mouse Y") * sensitivity;
@@ -3259,26 +3393,13 @@ class Grid
             currentRotation.y = Mathf.Clamp(currentRotation.y, -maxYAngle, maxYAngle);
             Cam.transform.rotation = Quaternion.Euler(currentRotation.y, currentRotation.x, 0);
 
-            /*
-            Cam.transform.Rotate(0, Input.GetAxis("Mouse X") * sensitivity, 0);
-            Cam.transform.Rotate(-Input.GetAxis("Mouse Y") * sensitivity, 0, 0);
-            Cam.transform.Rotate(0, 0, -Input.GetAxis("QandE") * 90 * Time.deltaTime);
-            */
 
-            /*
-            Cam.transform.Rotate(0.0f, Input.GetAxis("Mouse X"), 0.0f);
-            Cam.transform.Rotate(-Input.GetAxis("Mouse Y") * sensitivity * Time.deltaTime, 0.0f, 0.0f);
-            */
-            /*
-            double rotX = (double)Input.GetAxis("Mouse X") * sensitivity * Time.deltaTime;
-            double rotY = (double)Input.GetAxis("Mouse Y") * sensitivity * Time.deltaTime;
+            Vector3 dir = Cam.transform.rotation * Vector3.forward;
+            dir.y = 0.0f;
+            Vector3 dir2 = Quaternion.Euler(0.0f, 90.0f, 0.0f) * dir;
+            Vector3 lastPos;
 
-            Cam.transform.Rotate(0.0f, (float)rotX, 0.0f);
-            Cam.transform.RotateAround(new Vector3((float)Math.Cos(rotX), 0.0f  ,  (float)Math.Sin(rotY) )   , -(float)rotY);
-            */
-
-
-
+            lastPos = new Vector3(Cam.transform.position.x, Cam.transform.position.y, Cam.transform.position.z);
             if (Input.GetKey("up"))
             {
                 Cam.transform.position += dir * Time.deltaTime * speed;
@@ -3296,21 +3417,16 @@ class Grid
                 Cam.transform.position += dir2 * Time.deltaTime * speed;
             }
             
-            int layerMask = LayerMask.GetMask("Default");
-            layerMask |= (1 << 2) ;
+            int layerMask = LayerMask.GetMask("Default") | LayerMask.GetMask("Walls");
 
             Collider[] hitColliders = Physics.OverlapBox(Cam.transform.position, Cam.transform.localScale / 2, Quaternion.identity, layerMask);
-            int i = 0;
             //Check when there is a new collider coming into contact with the box
-            for (i = 0; i < hitColliders.Length; i++)
+            if(hitColliders.Length>0)
             {
                 //Output all of the collider names
                 Cam.transform.position = new Vector3(lastPos.x, lastPos.y, lastPos.z);
-                break;
-                
             }
+            
         }
-
-
     }
 }
