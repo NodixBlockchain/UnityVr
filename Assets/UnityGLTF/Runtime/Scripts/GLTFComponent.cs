@@ -156,19 +156,13 @@ namespace UnityGLTF
 				print("model loaded with vertices: " + sceneImporter.Statistics.VertexCount.ToString() + ", triangles: " + sceneImporter.Statistics.TriangleCount.ToString() +", root key: "+ sceneImporter.getRootKey());
 				LastLoadedScene = sceneImporter.LastLoadedScene;
                 rootPubKey = sceneImporter.getRootKey();
+          
+                var meshes = sceneImporter.LastLoadedScene.GetComponentsInChildren<MeshFilter>();
 
-                var mesh = sceneImporter.LastLoadedScene.GetComponentInChildren<MeshFilter>();
-                /*
-                this.transform.localPosition = mesh.transform.localPosition;
-                this.transform.localRotation= mesh.transform.localRotation;
-                this.transform.localScale = mesh.transform.localScale;
-
-                mesh.transform.localPosition = new Vector3(0.0f, 0.0f, 0.0f);
-                mesh.transform.localRotation = new Quaternion();
-                mesh.transform.localScale = new Vector3(1.0f, 1.0f, 1.0f);
-                */
-
-                GetComponent<BoxCollider>().size = mesh.mesh.bounds.size;
+                foreach (MeshFilter mesh in meshes)
+                {
+                    mesh.gameObject.AddComponent<Rigidbody>();
+                }
 
                 Animations = sceneImporter.LastLoadedScene.GetComponents<Animation>();
 

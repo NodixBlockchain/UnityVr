@@ -4,10 +4,12 @@ using UnityEngine;
 
 using UnityEngine.UI;
 
+using Org.BouncyCastle.Crypto.Parameters;
+
 public class ObjSelection : MonoBehaviour
 {
     public GameObject SelectRoomObject = null;
-    public Wallet wallet;
+    public ECDomainParameters domainParams;
     public int MoveObj = 0;
     public float MoveSpeed = 10.0f;
     public float RotSpeed = 100.0f;
@@ -19,14 +21,12 @@ public class ObjSelection : MonoBehaviour
     private void Start()
     {
         panel = this.transform.Find("ObjSelectPanel").gameObject;
-
-        var bottom = this.transform.localScale.y * this.GetComponent<RectTransform>().rect.height / 2.0f;
-        var objMesh = SelectRoomObject.GetComponentInChildren<MeshFilter>().mesh;
-        string hpk = SelectRoomObject.GetComponent<UnityGLTF.GLTFComponent>().getRootPubKey();
+        var objMesh = SelectRoomObject.GetComponent<MeshFilter>().mesh;
+        string hpk = SelectRoomObject.GetComponentInParent<UnityGLTF.GLTFComponent>().getRootPubKey();
         if(hpk != null)
         {
             byte[] pubKey = Org.BouncyCastle.Utilities.Encoders.Hex.Decode(hpk);
-            WalletAddress addr = new WalletAddress("my", pubKey, wallet.domainParams);
+            WalletAddress addr = new WalletAddress("my", pubKey, domainParams);
             panel.transform.Find("ObjAddr").GetComponent<Text>().text = addr.PubAddr;
         }
         MoveObj = 0;
@@ -56,9 +56,6 @@ public class ObjSelection : MonoBehaviour
             hasPhysic = false;
             panel.transform.Find("TogglePhys").GetComponent<Toggle>().isOn = false;
         }
-        
-
-        this.transform.position = new Vector3(SelectRoomObject.transform.position.x, SelectRoomObject.transform.position.y + bottom + objMesh.bounds.max.y * SelectRoomObject.transform.localScale.y, SelectRoomObject.transform.position.z);
     }
 
 
@@ -148,6 +145,11 @@ public class ObjSelection : MonoBehaviour
 
     void Update()
     {
+        var bottom = this.transform.localScale.y * this.GetComponent<RectTransform>().rect.height / 2.0f;
+        var objMesh = SelectRoomObject.GetComponent<Collider>();
+
+        this.transform.position = new Vector3(SelectRoomObject.transform.position.x, SelectRoomObject.transform.position.y + bottom + objMesh.bounds.max.y , SelectRoomObject.transform.position.z);
+
         if (Input.GetMouseButton(0))
         {
             var drop = panel.transform.Find("SelectCoord");

@@ -14,22 +14,14 @@ using Org.BouncyCastle.Crypto.Digests;
 using Org.BouncyCastle.Crypto.Signers;
 using Org.BouncyCastle.Security;
 using Org.BouncyCastle.Math.EC;
-using Org.BouncyCastle.Utilities;
-using Org.BouncyCastle.Utilities.IO.Pem;
 using Org.BouncyCastle.Asn1.Sec;
-
-
 using Org.BouncyCastle.Math;
 
 
 using UnityEngine;
-using Unity;
-
-using GLTF;
-using UnityGLTF.Extensions;
-
 using UnityEngine.UI;
 using UnityEngine.Networking;
+
 
 
 /*using FASTER.core;*/
@@ -89,8 +81,6 @@ public class NodePrivaKey
 [System.Serializable]
 public class WalletAddress
 {
-    
-
     public WalletAddress()
     {
         Name = null;
@@ -98,16 +88,12 @@ public class WalletAddress
         PrivKey = null;
     }
 
-    
-
     public byte[] Sign(byte[] data, ECDomainParameters domain)
     {
         byte[] key;
         ECPrivateKeyParameters privateKey;
         ECPublicKeyParameters publicParams;
         Org.BouncyCastle.Math.EC.ECPoint Q;
-
-     
 
         key = WalletAddress.base58ToByteArray(PrivKey);
 
@@ -344,7 +330,7 @@ public class Wallet
     public ECDomainParameters domainParams;
     public WalletAddress mainKey;
 
-    MonoBehaviour mono;
+    //MonoBehaviour mono;
 
     public IEnumerator getnodepriv(string name, string pubaddr)
     {
@@ -395,7 +381,7 @@ public class Wallet
     {
         addresses = new List<WalletAddress> ();
 
-        mono = mainmono;
+        //mono = mainmono;
 
         X9ECParameters curve = ECNamedCurveTable.GetByName("secp256k1");
         domainParams = new ECDomainParameters(curve.Curve, curve.G, curve.N, curve.H, curve.GetSeed());
@@ -445,7 +431,7 @@ public class Wallet
 
             if (addresses[n].PrivKey != null)
             {
-                mono.StartCoroutine(addresses[n].checkpub());
+                /*mono.StartCoroutine(addresses[n].checkpub());*/
                 mainKey = addresses[n];
                 return;
             }
@@ -455,7 +441,7 @@ public class Wallet
 
         addresses.Add(newAddress);
 
-        mono.StartCoroutine(newAddress.checkpub());
+        /*mono.StartCoroutine(newAddress.checkpub());*/
 
         save();
     }
@@ -526,761 +512,38 @@ public class itemTable
 
 }
 
-
-[System.Serializable]
-public class TxInput
-{
-    public string txid;
-    public int index;
-    public int value;
-    public string srcaddr;
-    public string script;
-    public string signHash;
-}
-
-[System.Serializable]
-public class TxOutput
-{
-    public int value;
-    public string script;
-    public string dstaddr;
-}
-
-[System.Serializable]
-public class Transaction
-{
-    public string txid;
-    public int version;
-    public int time;
-    public int locktime;
-    public List<TxInput> txsin;
-    public List<TxOutput> txsout;
-    public Boolean issigned;
-}
-
-
-public class objNode
-{
-    public objNode(GameObject Obj)
-    {
-        nodeTx = null;
-        obj = Obj;
-    }
-    public GameObject obj;
-    public Transaction nodeTx;
-    public Transaction nodePTx;
-}
-
-public class gltfRef
-{
-    public gltfRef(string Hash)
-    {
-        rootHash = Hash;
-        objs = new List<objNode>();
-    }
-
-    public Transaction sceneTx;
-    public List<objNode> objs;
-    public string rootHash;
-    
-}
-
-[System.Serializable]
-public class RPCTx
-{
-    public Transaction transaction;
-}
-[System.Serializable]
-public class RPCTransaction
-{
-    int id;
-    string jsonrpc;
-    public RPCTx result;
-}
-
-[System.Serializable]
-public class RPCSignTx
-{
-    public string txid;
-}
-[System.Serializable]
-public class RPCSign
-{
-    int id;
-    string jsonrpc;
-    public RPCSignTx result;
-}
-
-
 public struct SaveInfo
 {
     public string appName;
     public int sceneTypeId;
     public int roomTypeId;
     public int nodeTypeId;
-    public string server;
     public WalletAddress mainKey;
-    public ECDomainParameters domainParams;
 }
-
-public class vrRoom
-{
-    public string name;
-    public List<gltfRef> sceneObjects;
-    public Transaction roomTx;
-    MonoBehaviour mono;
-    SaveInfo saveInfos;
-
-    public vrRoom(MonoBehaviour Mono)
-    {
-        mono = Mono;
-        sceneObjects = new List<gltfRef>();
-    }
-
-    public void addObj(GameObject obj, string hash)
-    {
-        obj.GetComponent<UnityGLTF.GLTFComponent>().transform.position = new Vector3(0.0f, 2.0f, 0.0f);
-        obj.AddComponent<BoxCollider>().size = new Vector3(0.5f, 0.5f, 0.5f);
-
-        objNode on = new objNode(obj);
-
-        for (int n = 0; n < this.sceneObjects.Count; n++)
-        {
-            if (this.sceneObjects[n].rootHash == hash)
-            {
-                this.sceneObjects[n].objs.Add(on);
-                return;
-            }
-        }
-
-        gltfRef myref = new gltfRef(hash);
-        myref.objs.Add(on);
-        this.sceneObjects.Add(myref);
-    }
-
-
-    IEnumerator SubmitTx(string txid)
-    {
-        string URL = "http://" + this.saveInfos.server + "/jsonrpc";
-        string submittx = "{id:1 , jsonrpc: \"2.0\", method:\"submittx\", params : [\"" + txid + "\"]}";
-        UnityWebRequest webRequest = UnityWebRequest.Put(URL, submittx);
-        webRequest.SetRequestHeader("Content-Type", "application/json");
-        // Request and wait for the desired page.
-        yield return webRequest.SendWebRequest();
-
-        switch (webRequest.result)
-        {
-            case UnityWebRequest.Result.ConnectionError:
-            case UnityWebRequest.Result.DataProcessingError:
-                Debug.Log("SubmitTx " + submittx + " : Error: " + webRequest.error);
-                break;
-            case UnityWebRequest.Result.ProtocolError:
-                Debug.Log("SubmitTx " + submittx + " : HTTP Error: " + webRequest.error);
-                break;
-            case UnityWebRequest.Result.Success:
-                Debug.Log("SubmitTx " + submittx + " : \nReceived: " + webRequest.downloadHandler.text);
-                break;
-        }
-    }
-
-    IEnumerator signTxInputs(Transaction tx)
-    {
-        string URL = "http://" + saveInfos.server + "/jsonrpc";
-
-        for (int n = 0; n < tx.txsin.Count; n++)
-        {
-            byte[] derSign = this.saveInfos.mainKey.Sign(Org.BouncyCastle.Utilities.Encoders.Hex.Decode(tx.txsin[n].signHash), this.saveInfos.domainParams);
-            string signtx = "{id:1 , jsonrpc: \"2.0\", method: \"signtxinput\", params : [\"" + tx.txid + "\"," + n.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(derSign) + "\",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(this.saveInfos.mainKey.getPub().Q.GetEncoded(true)) + "\"]}";
-            UnityWebRequest webRequest = UnityWebRequest.Put(URL, signtx);
-            webRequest.SetRequestHeader("Content-Type", "application/json");
-            // Request and wait for the desired page.
-            yield return webRequest.SendWebRequest();
-
-            switch (webRequest.result)
-            {
-                case UnityWebRequest.Result.ConnectionError:
-                case UnityWebRequest.Result.DataProcessingError:
-                    Debug.Log("signTx  " + signtx + " : Error: " + webRequest.error);
-                    break;
-                case UnityWebRequest.Result.ProtocolError:
-                    Debug.Log("signTx  " + signtx + " : HTTP Error: " + webRequest.error);
-                    break;
-                case UnityWebRequest.Result.Success:
-
-                    Debug.Log("signTx signtxinput" + signtx + " : \nReceived: " + webRequest.downloadHandler.text);
-
-                    tx.txid = JsonUtility.FromJson<RPCSign>(webRequest.downloadHandler.text).result.txid;
-
-                    Debug.Log("signTx signtxinput " + tx.txid);
-                    break;
-            }
-        }
-        tx.issigned = true;
-        mono.StartCoroutine(SubmitTx(tx.txid));
-    }
-
-    IEnumerator addnodes(gltfRef gltfref)
-    {
-        string URL = "http://" + saveInfos.server + "/jsonrpc";
-
-        for (int on = 0; on < gltfref.objs.Count; on++)
-        {
-            string addchild = "{id:1 , jsonrpc: \"2.0\", method:\"addchildobj\", params : [\"" + saveInfos.appName + "\",\"" + gltfref.sceneTx.txid + "\",\"nodes\",\"" + gltfref.objs[on].nodeTx.txid + "\"]}";
-            UnityWebRequest webRequest = UnityWebRequest.Put(URL, addchild);
-            webRequest.SetRequestHeader("Content-Type", "application/json");
-
-            // Request and wait for the desired page.
-            yield return webRequest.SendWebRequest();
-            switch (webRequest.result)
-            {
-                case UnityWebRequest.Result.ConnectionError:
-                case UnityWebRequest.Result.DataProcessingError:
-                    Debug.Log("addnode  " + addchild + " : Error: " + webRequest.error);
-                    break;
-                case UnityWebRequest.Result.ProtocolError:
-                    Debug.Log("addnode  " + addchild + " : HTTP Error: " + webRequest.error);
-                    break;
-                case UnityWebRequest.Result.Success:
-
-                    Debug.Log("addnode " + addchild + " : \nReceived: " + webRequest.downloadHandler.text);
-                    gltfref.objs[on].nodePTx = JsonUtility.FromJson<RPCTransaction>(webRequest.downloadHandler.text).result.transaction;
-                    Debug.Log("addnode myTransaction " + gltfref.objs[on].nodePTx.txid + " " + gltfref.sceneTx.txid);
-                    gltfref.objs[on].nodePTx.issigned = false;
-                    mono.StartCoroutine(signTxInputs(gltfref.objs[on].nodePTx));
-
-                    break;
-            }
-        }
-    }
-
-    IEnumerator SubmitNodesTx(gltfRef gltfref)
-    {
-        string URL = "http://" + saveInfos.server + "/jsonrpc";
-
-        for (int n = 0; n < gltfref.objs.Count; n++)
-        {
-            string submittx = "{id:1 , jsonrpc: \"2.0\", method:\"submittx\", params : [\"" + gltfref.objs[n].nodeTx.txid + "\"]}";
-            UnityWebRequest webRequest = UnityWebRequest.Put(URL, submittx);
-            webRequest.SetRequestHeader("Content-Type", "application/json");
-            // Request and wait for the desired page.
-            yield return webRequest.SendWebRequest();
-
-            switch (webRequest.result)
-            {
-                case UnityWebRequest.Result.ConnectionError:
-                case UnityWebRequest.Result.DataProcessingError:
-                    Debug.Log("SubmitNodeTx " + submittx + " : Error: " + webRequest.error);
-                    break;
-                case UnityWebRequest.Result.ProtocolError:
-                    Debug.Log("SubmitNodeTx " + submittx + " : HTTP Error: " + webRequest.error);
-                    break;
-                case UnityWebRequest.Result.Success:
-                    Debug.Log("SubmitNodeTx " + submittx + " : \nReceived: " + webRequest.downloadHandler.text);
-                    break;
-            }
-        }
-
-        mono.StartCoroutine(addnodes(gltfref));
-    }
-
-    IEnumerator signNodesTxInputs(gltfRef gltfref)
-    {
-        string URL = "http://" + saveInfos.server + "/jsonrpc";
-
-        for (int on = 0; on < gltfref.objs.Count; on++)
-        {
-            for (int n = 0; n < gltfref.objs[on].nodeTx.txsin.Count; n++)
-            {
-                byte[] derSign = this.saveInfos.mainKey.Sign(Org.BouncyCastle.Utilities.Encoders.Hex.Decode(gltfref.objs[on].nodeTx.txsin[n].signHash), this.saveInfos.domainParams);
-                string signtx = "{id:1 , jsonrpc: \"2.0\", method: \"signtxinput\", params : [\"" + gltfref.objs[on].nodeTx.txid + "\"," + n.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(derSign) + "\",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(this.saveInfos.mainKey.getPub().Q.GetEncoded(true)) + "\"]}";
-                UnityWebRequest webRequest = UnityWebRequest.Put(URL, signtx);
-                webRequest.SetRequestHeader("Content-Type", "application/json");
-                // Request and wait for the desired page.
-                yield return webRequest.SendWebRequest();
-
-                switch (webRequest.result)
-                {
-                    case UnityWebRequest.Result.ConnectionError:
-                    case UnityWebRequest.Result.DataProcessingError:
-                        Debug.Log("signNodeTxInputs  " + signtx + " : Error: " + webRequest.error);
-                        break;
-                    case UnityWebRequest.Result.ProtocolError:
-                        Debug.Log("signNodeTxInputs  " + signtx + " : HTTP Error: " + webRequest.error);
-                        break;
-                    case UnityWebRequest.Result.Success:
-
-                        Debug.Log("signNodeTxInputs signtxinput" + signtx + " : \nReceived: " + webRequest.downloadHandler.text);
-
-                        gltfref.objs[on].nodeTx.txid = JsonUtility.FromJson<RPCSign>(webRequest.downloadHandler.text).result.txid;
-
-                        break;
-                }
-            }
-            gltfref.objs[on].nodeTx.issigned = true;
-        }
-        mono.StartCoroutine(SubmitNodesTx(gltfref));
-    }
-
-    IEnumerator makenodes(gltfRef gltfref)
-    {
-        string URL = "http://" + saveInfos.server + "/jsonrpc";
-
-        for (int n = 0; n < gltfref.objs.Count; n++)
-        {
-            GameObject obj = gltfref.objs[n].obj;
-
-            Quaternion TotalQ = obj.transform.localRotation * obj.GetComponentInChildren<MeshFilter>().transform.localRotation;
-            GLTF.Math.Quaternion myQ = TotalQ.ToGltfQuaternionConvert();
-            Vector3 mP = new Vector3(obj.transform.position.x * SchemaExtensions.CoordinateSpaceConversionScale.X, obj.transform.position.y * SchemaExtensions.CoordinateSpaceConversionScale.Y, obj.transform.position.z * SchemaExtensions.CoordinateSpaceConversionScale.Z);
-            Vector3 Scale = obj.GetComponentInChildren<MeshFilter>().transform.localScale;
-
-            var nodeJson = "{name: \"node " + n.ToString() + "\", ";
-            nodeJson += "translation: [" + mP[0].ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + mP[1].ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + mP[2].ToString(System.Globalization.CultureInfo.InvariantCulture) + "], ";
-            nodeJson += "scale: [" + Scale.x.ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + Scale.y.ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + Scale.z.ToString(System.Globalization.CultureInfo.InvariantCulture) + "], ";
-            nodeJson += "rotation: [" + myQ.X.ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + myQ.Y.ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + myQ.Z.ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + myQ.W.ToString(System.Globalization.CultureInfo.InvariantCulture) + "]}";
-
-            string makenodeobj = "{id:1 , jsonrpc: \"2.0\", method:\"makeappobjtx\", params : [\"" + this.saveInfos.appName + "\"," + this.saveInfos.nodeTypeId.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(this.saveInfos.mainKey.getPub().Q.GetEncoded(true)) + "\"," + nodeJson + "]}";
-
-            UnityWebRequest webRequest = UnityWebRequest.Put(URL, makenodeobj);
-            webRequest.SetRequestHeader("Content-Type", "application/json");
-
-            // Request and wait for the desired page.
-            yield return webRequest.SendWebRequest();
-
-            switch (webRequest.result)
-            {
-                case UnityWebRequest.Result.ConnectionError:
-                case UnityWebRequest.Result.DataProcessingError:
-                    Debug.Log("makenode  " + makenodeobj + " : Error: " + webRequest.error);
-                    break;
-                case UnityWebRequest.Result.ProtocolError:
-                    Debug.Log("makenode  " + makenodeobj + " : HTTP Error: " + webRequest.error);
-                    break;
-                case UnityWebRequest.Result.Success:
-                    Debug.Log("makenode " + makenodeobj + " : \nReceived: " + webRequest.downloadHandler.text);
-                    gltfref.objs[n].nodeTx = JsonUtility.FromJson<RPCTransaction>(webRequest.downloadHandler.text).result.transaction;
-                    gltfref.objs[n].nodeTx.issigned = false;
-                    Debug.Log("makenode myTransaction " + gltfref.objs[n].nodeTx.txid);
-                    break;
-            }
-        }
-        mono.StartCoroutine(signNodesTxInputs(gltfref));
-    }
-
-    IEnumerator addRoomSceneObj(gltfRef gltfref)
-    {
-        gltfref.sceneTx.issigned = true;
-
-        for (int n = 0; n < this.sceneObjects.Count; n++)
-        {
-            if (this.sceneObjects[n].sceneTx == null)
-                yield break;
-
-            if (!this.sceneObjects[n].sceneTx.issigned)
-                yield break;
-        }
-
-        string URL = "http://" + saveInfos.server + "/jsonrpc";
-
-        for (int n = 0; n < this.sceneObjects.Count; n++)
-        {
-            string addchild = "{id:1 , jsonrpc: \"2.0\", method:\"addchildobj\", params : [\"" + saveInfos.appName + "\",\"" + this.roomTx.txid + "\",\"objects\",\"" + this.sceneObjects[n].sceneTx.txid + "\"]}";
-            UnityWebRequest webRequest = UnityWebRequest.Put(URL, addchild);
-            webRequest.SetRequestHeader("Content-Type", "application/json");
-
-            // Request and wait for the desired page.
-            yield return webRequest.SendWebRequest();
-            switch (webRequest.result)
-            {
-                case UnityWebRequest.Result.ConnectionError:
-                case UnityWebRequest.Result.DataProcessingError:
-                    Debug.Log("addRoomSceneObj  " + addchild + " : Error: " + webRequest.error);
-                    break;
-                case UnityWebRequest.Result.ProtocolError:
-                    Debug.Log("addRoomSceneObj  " + addchild + " : HTTP Error: " + webRequest.error);
-                    break;
-                case UnityWebRequest.Result.Success:
-
-                    Debug.Log("addRoomSceneObj " + addchild + " : \nReceived: " + webRequest.downloadHandler.text);
-                    Transaction myTransaction = JsonUtility.FromJson<RPCTransaction>(webRequest.downloadHandler.text).result.transaction;
-                    Debug.Log("addRoomSceneObj myTransaction " + myTransaction.txid + " " + this.roomTx.txid);
-                    myTransaction.issigned = false;
-                    mono.StartCoroutine(signTxInputs(myTransaction));
-
-                    break;
-            }
-        }
-    }
-
-    IEnumerator SubmitSceneTx(gltfRef gltfref)
-    {
-        string URL = "http://" + saveInfos.server + "/jsonrpc";
-        string submittx = "{id:1 , jsonrpc: \"2.0\", method:\"submittx\", params : [\"" + gltfref.sceneTx.txid + "\"]}";
-        UnityWebRequest webRequest = UnityWebRequest.Put(URL, submittx);
-        webRequest.SetRequestHeader("Content-Type", "application/json");
-        // Request and wait for the desired page.
-        yield return webRequest.SendWebRequest();
-
-        switch (webRequest.result)
-        {
-            case UnityWebRequest.Result.ConnectionError:
-            case UnityWebRequest.Result.DataProcessingError:
-                Debug.Log("SubmitSceneTx  " + submittx + " : Error: " + webRequest.error);
-                break;
-            case UnityWebRequest.Result.ProtocolError:
-                Debug.Log("SubmitSceneTx  " + submittx + " : HTTP Error: " + webRequest.error);
-                break;
-            case UnityWebRequest.Result.Success:
-
-                Debug.Log("SubmitSceneTx signtxinput" + submittx + " : \nReceived: " + webRequest.downloadHandler.text);
-
-                mono.StartCoroutine(makenodes(gltfref));
-                break;
-        }
-    }
-
-    IEnumerator signSceneTxInputs(gltfRef gltfref)
-    {
-        string URL = "http://" + saveInfos.server + "/jsonrpc";
-
-        for (int n = 0; n < gltfref.sceneTx.txsin.Count; n++)
-        {
-            byte[] derSign = this.saveInfos.mainKey.Sign(Org.BouncyCastle.Utilities.Encoders.Hex.Decode(gltfref.sceneTx.txsin[n].signHash), this.saveInfos.domainParams);
-            string signtx = "{id:1 , jsonrpc: \"2.0\", method: \"signtxinput\", params : [\"" + gltfref.sceneTx.txid + "\"," + n.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(derSign) + "\",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(this.saveInfos.mainKey.getPub().Q.GetEncoded(true)) + "\"]}";
-            UnityWebRequest webRequest = UnityWebRequest.Put(URL, signtx);
-            webRequest.SetRequestHeader("Content-Type", "application/json");
-            // Request and wait for the desired page.
-            yield return webRequest.SendWebRequest();
-
-            switch (webRequest.result)
-            {
-                case UnityWebRequest.Result.ConnectionError:
-                case UnityWebRequest.Result.DataProcessingError:
-                    Debug.Log("signSceneTxInputs  " + signtx + " : Error: " + webRequest.error);
-                    break;
-                case UnityWebRequest.Result.ProtocolError:
-                    Debug.Log("signSceneTxInputs  " + signtx + " : HTTP Error: " + webRequest.error);
-                    break;
-                case UnityWebRequest.Result.Success:
-                    Debug.Log("signSceneTxInputs signtxinput" + signtx + " : \nReceived: " + webRequest.downloadHandler.text);
-                    gltfref.sceneTx.txid = JsonUtility.FromJson<RPCSign>(webRequest.downloadHandler.text).result.txid;
-                    Debug.Log("signSceneTxInputs signtxinput" + gltfref.sceneTx.txid);
-                    break;
-            }
-        }
-        mono.StartCoroutine(addRoomSceneObj(gltfref));
-
-        mono.StartCoroutine(SubmitSceneTx(gltfref));
-    }
-
-    IEnumerator makeobjs()
-    {
-        string URL = "http://" + saveInfos.server + "/jsonrpc";
-
-        for (int n = 0; n < this.sceneObjects.Count; n++)
-        {
-            gltfRef gltfref = this.sceneObjects[n];
-            string sceneJSon = "{root : \"" + gltfref.rootHash + "\"}";
-            string makeappobj = "{id:1 , jsonrpc: \"2.0\", method: \"makeappobjtx\", params : [\"" + saveInfos.appName + "\"," + saveInfos.sceneTypeId.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(this.saveInfos.mainKey.getPub().Q.GetEncoded(true)) + "\"," + sceneJSon + "]}";
-            Debug.Log("makeobj  " + URL + "  " + makeappobj);
-
-            UnityWebRequest scenewebRequest = UnityWebRequest.Put(URL, makeappobj);
-            scenewebRequest.SetRequestHeader("Content-Type", "application/json");
-            // Request and wait for the desired page.
-            yield return scenewebRequest.SendWebRequest();
-
-            switch (scenewebRequest.result)
-            {
-                case UnityWebRequest.Result.ConnectionError:
-                case UnityWebRequest.Result.DataProcessingError:
-                    Debug.Log("makeobj  " + makeappobj + " : Error: " + scenewebRequest.error);
-                    break;
-                case UnityWebRequest.Result.ProtocolError:
-                    Debug.Log("makeobj  " + makeappobj + " : HTTP Error: " + scenewebRequest.error);
-                    break;
-                case UnityWebRequest.Result.Success:
-
-                    Debug.Log("makeobj " + makeappobj + " : \nReceived: " + scenewebRequest.downloadHandler.text);
-                    gltfref.sceneTx = JsonUtility.FromJson<RPCTransaction>(scenewebRequest.downloadHandler.text).result.transaction;
-                    gltfref.sceneTx.issigned = false;
-                    Debug.Log("makeobj myTransaction" + gltfref.sceneTx.txid + " " + gltfref.sceneTx.txsin.Count);
-                    mono.StartCoroutine(signSceneTxInputs(gltfref));
-                    break;
-            }
-        }
-    }
-
-    IEnumerator SubmitRoomTx()
-    {
-        string URL = "http://" + saveInfos.server + "/jsonrpc";
-        string submittx = "{id:1 , jsonrpc: \"2.0\", method:\"submittx\", params : [\"" + this.roomTx.txid + "\"]}";
-        UnityWebRequest webRequest = UnityWebRequest.Put(URL, submittx);
-        webRequest.SetRequestHeader("Content-Type", "application/json");
-        // Request and wait for the desired page.
-        yield return webRequest.SendWebRequest();
-
-        switch (webRequest.result)
-        {
-            case UnityWebRequest.Result.ConnectionError:
-            case UnityWebRequest.Result.DataProcessingError:
-                Debug.Log("SubmitRoomTx " + submittx + " : Error: " + webRequest.error);
-                break;
-            case UnityWebRequest.Result.ProtocolError:
-                Debug.Log("SubmitRoomTx " + submittx + " : HTTP Error: " + webRequest.error);
-                break;
-            case UnityWebRequest.Result.Success:
-                Debug.Log("SubmitRoomTx " + submittx + " : \nReceived: " + webRequest.downloadHandler.text);
-
-                mono.StartCoroutine(makeobjs());
-                break;
-        }
-    }
-
-    IEnumerator signRoomTxInputs()
-    {
-        string URL = "http://" + saveInfos.server + "/jsonrpc";
-
-
-        for (int n = 0; n < this.roomTx.txsin.Count; n++)
-        {
-            byte[] derSign = this.saveInfos.mainKey.Sign(Org.BouncyCastle.Utilities.Encoders.Hex.Decode(this.roomTx.txsin[n].signHash), this.saveInfos.domainParams);
-            string signtx = "{id:1 , jsonrpc: \"2.0\", method: \"signtxinput\", params : [\"" + this.roomTx.txid + "\"," + n.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(derSign) + "\",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(this.saveInfos.mainKey.getPub().Q.GetEncoded(true)) + "\"]}";
-            UnityWebRequest webRequest = UnityWebRequest.Put(URL, signtx);
-            webRequest.SetRequestHeader("Content-Type", "application/json");
-            // Request and wait for the desired page.
-            yield return webRequest.SendWebRequest();
-
-            switch (webRequest.result)
-            {
-                case UnityWebRequest.Result.ConnectionError:
-                case UnityWebRequest.Result.DataProcessingError:
-                    Debug.Log("signRoomTxInputs  " + signtx + " : Error: " + webRequest.error);
-                    break;
-                case UnityWebRequest.Result.ProtocolError:
-                    Debug.Log("signRoomTxInputs  " + signtx + " : HTTP Error: " + webRequest.error);
-                    break;
-                case UnityWebRequest.Result.Success:
-
-                    Debug.Log("signRoomTxInputs signtxinput" + signtx + " : \nReceived: " + webRequest.downloadHandler.text);
-
-                    this.roomTx.txid = JsonUtility.FromJson<RPCSign>(webRequest.downloadHandler.text).result.txid;
-
-                    Debug.Log("signRoomTxInputs signtxinput" + this.roomTx.txid);
-                    break;
-            }
-        }
-
-        this.roomTx.issigned = true;
-
-        mono.StartCoroutine(SubmitRoomTx());
-    }
-
-
-    public IEnumerator makeroom(SaveInfo infos)
-    {
-        this.saveInfos = infos;
-        string URL = "http://" + saveInfos.server + "/jsonrpc";
-        string roomJSon = "{name : \"" + this.name + "\"}";
-        string makeapproom = "{id:1 , jsonrpc: \"2.0\", method: \"makeappobjtx\", params : [\"" + saveInfos.appName + "\"," + saveInfos.roomTypeId.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(this.saveInfos.mainKey.getPub().Q.GetEncoded(true)) + "\"," + roomJSon + "]}";
-        Debug.Log("makeapproom  " + URL + "  " + makeapproom);
-
-        UnityWebRequest scenewebRequest = UnityWebRequest.Put(URL, makeapproom);
-        scenewebRequest.SetRequestHeader("Content-Type", "application/json");
-        // Request and wait for the desired page.
-        yield return scenewebRequest.SendWebRequest();
-
-        switch (scenewebRequest.result)
-        {
-            case UnityWebRequest.Result.ConnectionError:
-            case UnityWebRequest.Result.DataProcessingError:
-                Debug.Log("makeroom  " + makeapproom + " : Error: " + scenewebRequest.error);
-                break;
-            case UnityWebRequest.Result.ProtocolError:
-                Debug.Log("makeroom  " + makeapproom + " : HTTP Error: " + scenewebRequest.error);
-                break;
-            case UnityWebRequest.Result.Success:
-
-                Debug.Log("makeroom " + makeapproom + " : \nReceived: " + scenewebRequest.downloadHandler.text);
-                this.roomTx = JsonUtility.FromJson<RPCTransaction>(scenewebRequest.downloadHandler.text).result.transaction;
-                Debug.Log("makeroom myTransaction" + this.roomTx.txid + " " + this.roomTx.txsin.Count);
-                this.roomTx.issigned = false;
-                mono.StartCoroutine(signRoomTxInputs());
-
-                break;
-        }
-    }
-
-}
-
-
-class WallSegment
-{
-    public GameObject defObj;
-    public gltfRef gltfObjs;
-    public cell startCell, endCell;
-
-    public Vector3 getDirection()
-    {
-        return new Vector3(this.endCell.obj.transform.position.x - this.startCell.obj.transform.position.x, 0.0f, this.endCell.obj.transform.position.z - this.startCell.obj.transform.position.z);
-    }
-
-
-    public double getAngle()
-    {
-        double angle = 0.0;
-        Vector3 dir = getDirection();
-        dir.Normalize();
-
-        if (dir.sqrMagnitude > 0.001f)
-        {
-            angle = Math.Atan2(dir.x, dir.z);
-        }
-
-        return angle;
-    }
-
-
-    public Vector3[] getArray(float step)
-    {
-        Vector3 dir = getDirection();
-        float l = dir.magnitude;
-        int nstep = (int)Math.Floor(l / step);
-        Vector3[] ret = new Vector3[nstep];
-
-        step = l / nstep;
-        dir.Normalize();
-        Vector3 start = new Vector3(startCell.obj.transform.position.x + (dir.x * step / 2.0f), 0.0f, startCell.obj.transform.position.z + (dir.z * step / 2.0f));
-
-        for (int n = 0; n < nstep; n++)
-        {
-            ret[n] = new Vector3(start.x + n * dir.x * step, 0.0f, start.z + n * dir.z * step);
-        }
-
-        return ret;
-    }
-
-    public void recompute(float height, string URL)
-    {
-
-        this.defObj.SetActive(true);
-        Vector3 delta = getDirection();
-
-        this.defObj.transform.position = new Vector3(this.startCell.obj.transform.position.x + delta.x / 2.0f, this.startCell.obj.transform.position.y + height / 2.0f, this.startCell.obj.transform.position.z + delta.z / 2.0f);
-        this.defObj.transform.localScale = new Vector3(4.0f, height, delta.magnitude);
-
-        delta.Normalize();
-        if (delta.sqrMagnitude > 0.001f)
-        {
-            double langle;
-
-            langle = Math.Atan2(delta.x, delta.z);
-
-            this.defObj.transform.rotation = Quaternion.Euler(0.0f, (float)(langle * 180.0f / Math.PI), 0.0f);
-        }
-        
-    }
-
-
-
-}
-
-
-class cell
-{
-    public GameObject obj;
-    
-    public int X;
-    public int Y;
-}
-
-
-class Grid
-{
-    Material selectedSphereMat;
-    Material SphereEditMat;
-    Material defaultSphereMat;
-
-    public cell[] cells;
-    public int w, h;
-    public int x, y;
-
-    public Grid(int X, int Y, int W, int H, Material selectedMat, Material EditMat, Material defaultMat)
-    {
-        x = X;
-        y = Y;
-        w = W;
-        h = H;
-        cells = new cell[w * h];
-
-        selectedSphereMat = selectedMat;
-        SphereEditMat = EditMat;
-        defaultSphereMat = defaultMat;
-
-        for (int ny = 0; ny < h; ny++)
-        {
-            for (int nx = 0; nx < w; nx++)
-            {
-                cells[(ny * w) + nx] = new cell();
-                cells[(ny * w) + nx].obj = GameObject.CreatePrimitive(PrimitiveType.Plane);
-                cells[(ny * w) + nx].obj.name = "Plane " + nx.ToString() + " - " + ny.ToString();
-                cells[(ny * w) + nx].obj.transform.position= new Vector3((nx + x) * 10.0f, -1.0f, (ny + y) * 10.0f);
-                cells[(ny * w) + nx].obj.transform.localScale = new Vector3(1.0f, 1.0f, 1.0f);
-
-                cells[(ny * w) + nx].X = nx;
-                cells[(ny * w) + nx].Y = ny;
-
-
-                /*
-                cells[(ny * w) + nx].lines = new GameObject[2];
-
-                cells[(ny * w) + nx].lines[0] = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                cells[(ny * w) + nx].lines[0].name = "Line 1 " + nx.ToString() + " - " + ny.ToString();
-                cells[(ny * w) + nx].lines[0].GetComponentInChildren<Renderer>().material.color = new Color(0, 0, 0);
-                cells[(ny * w) + nx].lines[0].transform.position = new Vector3((nx + x) * 10.0f - 5.0f, 1.0f, (ny + y) * 10.0f );
-                cells[(ny * w) + nx].lines[0].transform.localScale = new Vector3(0.75f, 0.75f, 10.0f);
-
-                cells[(ny * w) + nx].lines[1] = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                cells[(ny * w) + nx].lines[1].name = "Line 2 " + nx.ToString() + " - " + ny.ToString();
-                cells[(ny * w) + nx].lines[1].GetComponentInChildren<Renderer>().material.color = new Color(0, 0, 0);
-                cells[(ny * w) + nx].lines[1].transform.position = new Vector3((nx + x) * 10.0f, 1.0f, (ny + y) * 10.0f - 5.0f);
-                cells[(ny * w) + nx].lines[1].transform.localScale = new Vector3(10.0f, 0.75f, 0.75f);
-                */
-            }
-        }
-    }
-
-    public cell FindCellByName(string Name)
-    {
-        for (int n = 0; n < w * h; n++)
-        {
-            if (cells[n].obj.name == Name)
-                return cells[n];
-        }
-
-        return null;
-    }
-}
-
 
 class Blinker : MonoBehaviour
 {
     double cur;
-    Color[] matCols;
+    Color[] matCols=null;
     void Start()
     {
-        MeshRenderer mrs = GetComponentInChildren<MeshRenderer>();
+        MeshRenderer mrs = GetComponent<MeshRenderer>();
         cur = 0;
+
+        Debug.Log("blinker start " + mrs.gameObject.name);
 
         matCols = new Color[mrs.materials.Length];
 
         for (int n = 0; n < mrs.materials.Length; n++)
         {
+            Debug.Log("blinker start mat col" + mrs.materials[n].color.ToString());
+
             matCols[n] = mrs.materials[n].color;
         }
     }
     void Update()
     {
-        MeshRenderer mrs = GetComponentInChildren<MeshRenderer>();
+        MeshRenderer mrs = GetComponent<MeshRenderer>();
         cur += Time.deltaTime;
         float alpha = (float)(Math.Sin(cur * 4.0f) + 1.0f) / 2.0f;
 
@@ -1293,7 +556,10 @@ class Blinker : MonoBehaviour
 
     void OnDestroy()
     {
-        MeshRenderer mrs = GetComponentInChildren<MeshRenderer>();
+        MeshRenderer mrs = GetComponent<MeshRenderer>();
+
+        if (matCols == null)
+            return;
 
         for (int n = 0; n < mrs.materials.Length; n++)
         {
@@ -1318,13 +584,12 @@ public class loadGallery : MonoBehaviour
         return temp.wrap_result;
     }
 
-  
     public string appName = "UnityApp";
     public int sceneTypeId = 0x34;
     public int roomTypeId = 0x33;
     public int nodeTypeId = 0x08;
     public string server = "nodix.eu";
-
+    
 
     public string seedNodeAdress = "nodix.eu";
     public int seedNodePort = 16819;
@@ -1337,8 +602,6 @@ public class loadGallery : MonoBehaviour
     public Material SphereEditMat;
     public Material defaultSphereMat;
 
-    public Material wallSegMat;
-
     public Vector2 StartPos = new Vector2(-50.0f, 0.0f);
     public Vector2 Spacing = new Vector2(0.0f, -40.0f);
 
@@ -1349,9 +612,10 @@ public class loadGallery : MonoBehaviour
     public GameObject indexPanel;
     public Font textFont;
 
-    public float wallHeight = 10.0f;
     public float sensitivity = 10.0f;
     public float speed = 500.0f;
+
+    private cell hoveredCell;
 
     private Gallery myGallery;
     private const string baseURL = "/app/UnityApp";
@@ -1363,46 +627,27 @@ public class loadGallery : MonoBehaviour
     private GameObject[] NodesTexts = null;
     private GameObject galleriesAddress;
     private vrRoom room;
-    private Grid grid;
+
 
     private List<Node> Nodes;
     private itemTable nodesTable;
     private itemTable walletTable;
     private GameObject[] Headers;
     private GameObject emptyResult;
-    private GameObject roomMenu;
+    private GameObject roomMenu = null;
     private Wallet wallet;
     private GameObject newAddr;
 
     private GameObject buttonPrefab;
     private Material lineMaterial;
-    private GameObject EditWallPanel = null;
-
-    private cell hoveredCell, selectedCell;
-    private GameObject currentSeg, lastSeg;
-    private List<WallSegment> wallSegments;
-    
-    private Boolean CreateWalls = false;
-    private Boolean EditRoomWall = false;
-    private Boolean outScope = false;
-
-    private int SelectedWallSeg = -1;
-    private int HoveredWallSeg = -1;
 
     private Vector3 lastCamPos;
-    private GameObject roomFloor = null;
-
+    
     private float maxYAngle = 80f;
     private Vector2 currentRotation;
 
-    private GameObject currentWallObj;
-    private string currentWallHash;
-
-    private GameObject ObjPannel = null;
-    private GameObject hoverRoomObject = null;
-
     private float lastSnapTime = 0.0f;
-    private bool[] canSnap;
+    private bool[] canSnap = new bool[2];
     private GameObject floorPlane;
 
 
@@ -1411,12 +656,10 @@ public class loadGallery : MonoBehaviour
         SaveInfo ret;
 
         ret.appName = appName;
-        ret.domainParams = wallet.domainParams;
         ret.mainKey = wallet.mainKey;
         ret.nodeTypeId = nodeTypeId;
         ret.roomTypeId = roomTypeId;
         ret.sceneTypeId = sceneTypeId;
-        ret.server = server;
 
         return ret;
     }
@@ -1425,19 +668,17 @@ public class loadGallery : MonoBehaviour
     // Start is called before the first frame update
     void Start()
     {
-        wallet = new Wallet(this);
-        wallet.load();
-
-        canSnap = new bool[2];
-
         canSnap[0] = true;
         canSnap[1] = true;
 
+        wallet = new Wallet(this);
+        wallet.load();
+
+        room = GameObject.Find("Room").GetComponent<vrRoom>();// new vrRoom();
+        room.setECDomain(wallet.domainParams);
+
         floorPlane = GameObject.Find("FloorPlane");
-
-        room = new vrRoom(this);
-        roomMenu = null;
-
+        
         galleriesAddress = GameObject.Find("Address Value");
         galleriesAddress.GetComponentInChildren<InputField>().text = address;
 
@@ -1446,7 +687,7 @@ public class loadGallery : MonoBehaviour
         Nodes = new List<Node>();
         Nodes.Add(SeedNode);
 
-        nodesTable = new itemTable(new string[] { "adress", "ip", "port", "ping" }, 50.0f);
+        nodesTable = new itemTable(new string[] { "adress", "ip", "port", "ping" }, 40.0f);
         walletTable = new itemTable(new string[] { "label", "adress", "owner" }, 65.0f);
 
         if (selectedSphereMat != null)
@@ -1468,10 +709,6 @@ public class loadGallery : MonoBehaviour
 
         StartCoroutine(loadRooms());
 
-        /*
-       
-        */
-        //var Teleport = new Locom
         /*StartCoroutine(wallet.getnodepriv("BitAdmin", "B8mPBEg2XbYSUwEh5a7yrfehvMNijpAm1P"));*/
     }
 
@@ -1586,8 +823,8 @@ public class loadGallery : MonoBehaviour
         var newButton = roomMenu.transform.Find("New Button");
         var saveButton = roomMenu.transform.Find("Save Button");
 
-         newButton.GetComponent<Button>().onClick.AddListener(() => newRoom());
-         saveButton.GetComponent<Button>().onClick.AddListener(() => saveAllScenes());
+        newButton.GetComponent<Button>().onClick.AddListener(() => room.newRoom());
+        saveButton.GetComponent<Button>().onClick.AddListener(() => room.saveAllScenes(makeSaveInfos()));
 
         roomMenu.transform.SetParent(panel.transform, false);
 
@@ -1840,544 +1077,6 @@ public class loadGallery : MonoBehaviour
         }
     }
 
-    /*
-    IEnumerator SubmitTx(string txid)
-    {
-        string URL = "http://" + server + "/jsonrpc";
-        string submittx = "{id:1 , jsonrpc: \"2.0\", method:\"submittx\", params : [\"" + txid + "\"]}";
-        UnityWebRequest webRequest = UnityWebRequest.Put(URL, submittx);
-        webRequest.SetRequestHeader("Content-Type", "application/json");
-        // Request and wait for the desired page.
-        yield return webRequest.SendWebRequest();
-
-        switch (webRequest.result)
-        {
-            case UnityWebRequest.Result.ConnectionError:
-            case UnityWebRequest.Result.DataProcessingError:
-                Debug.Log("SubmitTx " + submittx + " : Error: " + webRequest.error);
-                break;
-            case UnityWebRequest.Result.ProtocolError:
-                Debug.Log("SubmitTx " + submittx + " : HTTP Error: " + webRequest.error);
-                break;
-            case UnityWebRequest.Result.Success:
-                Debug.Log("SubmitTx " + submittx + " : \nReceived: " + webRequest.downloadHandler.text);
-                break;
-        }
-    }
-
-    IEnumerator signTxInputs(Transaction tx)
-    {
-        string URL = "http://" + server + "/jsonrpc";
-
-        for (int n = 0; n < tx.txsin.Count; n++)
-        {
-            byte[] derSign = wallet.mainKey.Sign(Org.BouncyCastle.Utilities.Encoders.Hex.Decode(tx.txsin[n].signHash), wallet.domainParams);
-            string signtx = "{id:1 , jsonrpc: \"2.0\", method: \"signtxinput\", params : [\"" + tx.txid + "\"," + n.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(derSign) + "\",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(wallet.mainKey.getPub().Q.GetEncoded(true)) + "\"]}";
-            UnityWebRequest webRequest = UnityWebRequest.Put(URL, signtx);
-            webRequest.SetRequestHeader("Content-Type", "application/json");
-            // Request and wait for the desired page.
-            yield return webRequest.SendWebRequest();
-
-            switch (webRequest.result)
-            {
-                case UnityWebRequest.Result.ConnectionError:
-                case UnityWebRequest.Result.DataProcessingError:
-                    Debug.Log("signTx  " + signtx + " : Error: " + webRequest.error);
-                    break;
-                case UnityWebRequest.Result.ProtocolError:
-                    Debug.Log("signTx  " + signtx + " : HTTP Error: " + webRequest.error);
-                    break;
-                case UnityWebRequest.Result.Success:
-
-                    Debug.Log("signTx signtxinput" + signtx + " : \nReceived: " + webRequest.downloadHandler.text);
-
-                    tx.txid = JsonUtility.FromJson<RPCSign>(webRequest.downloadHandler.text).result.txid;
-
-                    Debug.Log("signTx signtxinput " + tx.txid);
-                    break;
-            }
-        }
-        tx.issigned = true;
-        StartCoroutine(SubmitTx(tx.txid));
-    }
-
-    IEnumerator addnodes(gltfRef gltfref)
-    {
-        string URL = "http://" + server + "/jsonrpc";
-
-        for (int on = 0; on < gltfref.objs.Count; on++)
-        {
-            string addchild = "{id:1 , jsonrpc: \"2.0\", method:\"addchildobj\", params : [\"" + appName + "\",\"" +  gltfref.sceneTx.txid + "\",\"nodes\",\"" + gltfref.objs[on].nodeTx.txid + "\"]}";
-            UnityWebRequest webRequest = UnityWebRequest.Put(URL, addchild);
-            webRequest.SetRequestHeader("Content-Type", "application/json");
-
-            // Request and wait for the desired page.
-            yield return webRequest.SendWebRequest();
-            switch (webRequest.result)
-            {
-                case UnityWebRequest.Result.ConnectionError:
-                case UnityWebRequest.Result.DataProcessingError:
-                    Debug.Log("addnode  " + addchild + " : Error: " + webRequest.error);
-                    break;
-                case UnityWebRequest.Result.ProtocolError:
-                    Debug.Log("addnode  " + addchild + " : HTTP Error: " + webRequest.error);
-                    break;
-                case UnityWebRequest.Result.Success:
-
-                    Debug.Log("addnode " + addchild + " : \nReceived: " + webRequest.downloadHandler.text);
-                    gltfref.objs[on].nodePTx = JsonUtility.FromJson<RPCTransaction>(webRequest.downloadHandler.text).result.transaction;
-                    Debug.Log("addnode myTransaction " + gltfref.objs[on].nodePTx.txid+ " " + gltfref.sceneTx.txid);
-                    gltfref.objs[on].nodePTx.issigned = false;
-                    StartCoroutine(signTxInputs(gltfref.objs[on].nodePTx));
-
-                    break;
-            }
-        }
-    }
-
-    IEnumerator SubmitNodesTx(gltfRef gltfref)
-    {
-        string URL = "http://" + server + "/jsonrpc";
-
-        for (int n = 0; n < gltfref.objs.Count; n++)
-        {
-            string submittx = "{id:1 , jsonrpc: \"2.0\", method:\"submittx\", params : [\"" + gltfref.objs[n].nodeTx.txid + "\"]}";
-            UnityWebRequest webRequest = UnityWebRequest.Put(URL, submittx);
-            webRequest.SetRequestHeader("Content-Type", "application/json");
-            // Request and wait for the desired page.
-            yield return webRequest.SendWebRequest();
-
-            switch (webRequest.result)
-            {
-                case UnityWebRequest.Result.ConnectionError:
-                case UnityWebRequest.Result.DataProcessingError:
-                    Debug.Log("SubmitNodeTx " + submittx + " : Error: " + webRequest.error);
-                    break;
-                case UnityWebRequest.Result.ProtocolError:
-                    Debug.Log("SubmitNodeTx " + submittx + " : HTTP Error: " + webRequest.error);
-                    break;
-                case UnityWebRequest.Result.Success:
-                    Debug.Log("SubmitNodeTx " + submittx + " : \nReceived: " + webRequest.downloadHandler.text);
-                    break;
-            }
-        }
-
-        StartCoroutine(addnodes(gltfref));
-    }
-
-    IEnumerator signNodesTxInputs(gltfRef gltfref)
-    {
-        string URL = "http://" + server + "/jsonrpc";
-
-        for (int on = 0; on < gltfref.objs.Count; on++)
-        {
-            for (int n = 0; n < gltfref.objs[on].nodeTx.txsin.Count; n++)
-            {
-                byte[] derSign = wallet.mainKey.Sign(Org.BouncyCastle.Utilities.Encoders.Hex.Decode(gltfref.objs[on].nodeTx.txsin[n].signHash), wallet.domainParams);
-                string signtx = "{id:1 , jsonrpc: \"2.0\", method: \"signtxinput\", params : [\"" + gltfref.objs[on].nodeTx.txid + "\"," + n.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(derSign) + "\",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(wallet.mainKey.getPub().Q.GetEncoded(true)) + "\"]}";
-                UnityWebRequest webRequest = UnityWebRequest.Put(URL, signtx);
-                webRequest.SetRequestHeader("Content-Type", "application/json");
-                // Request and wait for the desired page.
-                yield return webRequest.SendWebRequest();
-
-                switch (webRequest.result)
-                {
-                    case UnityWebRequest.Result.ConnectionError:
-                    case UnityWebRequest.Result.DataProcessingError:
-                        Debug.Log("signNodeTxInputs  " + signtx + " : Error: " + webRequest.error);
-                        break;
-                    case UnityWebRequest.Result.ProtocolError:
-                        Debug.Log("signNodeTxInputs  " + signtx + " : HTTP Error: " + webRequest.error);
-                        break;
-                    case UnityWebRequest.Result.Success:
-
-                        Debug.Log("signNodeTxInputs signtxinput" + signtx + " : \nReceived: " + webRequest.downloadHandler.text);
-
-                        gltfref.objs[on].nodeTx.txid = JsonUtility.FromJson<RPCSign>(webRequest.downloadHandler.text).result.txid;
-
-                        break;
-                }
-            }
-            gltfref.objs[on].nodeTx.issigned = true;
-        }
-        StartCoroutine(SubmitNodesTx(gltfref));
-    }
-
- 
-    IEnumerator makenodes(gltfRef gltfref)
-    {
-        string URL = "http://" + server + "/jsonrpc";
-
-
-        for (int n = 0; n < gltfref.objs.Count; n++)
-        {
-            GameObject obj = gltfref.objs[n].obj;
-
-            var nodeJson = "{name: \"node " + n.ToString() + "\", translation: [" + obj.transform.position[0].ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + obj.transform.position[1].ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + obj.transform.position[2].ToString(System.Globalization.CultureInfo.InvariantCulture) + "] , scale: [" + obj.transform.localScale[0].ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + obj.transform.localScale[1].ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + obj.transform.localScale[2].ToString(System.Globalization.CultureInfo.InvariantCulture) + "], rotation: [" + obj.transform.rotation.x.ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + obj.transform.rotation.y.ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + obj.transform.rotation.z.ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + obj.transform.rotation.w.ToString(System.Globalization.CultureInfo.InvariantCulture) + "]}";
-
-            string makenodeobj = "{id:1 , jsonrpc: \"2.0\", method:\"makeappobjtx\", params : [\"" + appName + "\"," + nodeTypeId.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(wallet.mainKey.getPub().Q.GetEncoded(true)) + "\"," + nodeJson + "]}";
-
-            UnityWebRequest webRequest = UnityWebRequest.Put(URL, makenodeobj);
-            webRequest.SetRequestHeader("Content-Type", "application/json");
-
-            // Request and wait for the desired page.
-            yield return webRequest.SendWebRequest();
-
-            switch (webRequest.result)
-            {
-                case UnityWebRequest.Result.ConnectionError:
-                case UnityWebRequest.Result.DataProcessingError:
-                    Debug.Log("makenode  " + makenodeobj + " : Error: " + webRequest.error);
-                    break;
-                case UnityWebRequest.Result.ProtocolError:
-                    Debug.Log("makenode  " + makenodeobj + " : HTTP Error: " + webRequest.error);
-                    break;
-                case UnityWebRequest.Result.Success:
-                    Debug.Log("makenode " + makenodeobj + " : \nReceived: " + webRequest.downloadHandler.text);
-                    gltfref.objs[n].nodeTx = JsonUtility.FromJson<RPCTransaction>(webRequest.downloadHandler.text).result.transaction;
-                    gltfref.objs[n].nodeTx.issigned = false;
-                    Debug.Log("makenode myTransaction " + gltfref.objs[n].nodeTx.txid);
-                    break;
-            }
-        }
-
-        StartCoroutine(signNodesTxInputs(gltfref));
-    }
-
-
-    IEnumerator addRoomSceneObj(gltfRef gltfref)
-    {
-        gltfref.sceneTx.issigned = true;
-
-        for (int n = 0; n < room.sceneObjects.Count; n++)
-        {
-            if (room.sceneObjects[n].sceneTx == null)
-                yield break;
-
-            if (!room.sceneObjects[n].sceneTx.issigned)
-                yield break;
-        }
-
-        string URL = "http://" + server + "/jsonrpc";
-
-        for (int n = 0; n < room.sceneObjects.Count; n++)
-        {
-            string addchild = "{id:1 , jsonrpc: \"2.0\", method:\"addchildobj\", params : [\"" + appName + "\",\"" + room.roomTx.txid + "\",\"objects\",\"" + room.sceneObjects[n].sceneTx.txid + "\"]}";
-            UnityWebRequest webRequest = UnityWebRequest.Put(URL, addchild);
-            webRequest.SetRequestHeader("Content-Type", "application/json");
-
-            // Request and wait for the desired page.
-            yield return webRequest.SendWebRequest();
-            switch (webRequest.result)
-            {
-                case UnityWebRequest.Result.ConnectionError:
-                case UnityWebRequest.Result.DataProcessingError:
-                    Debug.Log("addRoomSceneObj  " + addchild + " : Error: " + webRequest.error);
-                    break;
-                case UnityWebRequest.Result.ProtocolError:
-                    Debug.Log("addRoomSceneObj  " + addchild + " : HTTP Error: " + webRequest.error);
-                    break;
-                case UnityWebRequest.Result.Success:
-
-                    Debug.Log("addRoomSceneObj " + addchild + " : \nReceived: " + webRequest.downloadHandler.text);
-                    Transaction myTransaction = JsonUtility.FromJson<RPCTransaction>(webRequest.downloadHandler.text).result.transaction;
-                    Debug.Log("addRoomSceneObj myTransaction " + myTransaction.txid + " " + room.roomTx.txid);
-                    myTransaction.issigned = false;
-                    StartCoroutine(signTxInputs(myTransaction));
-
-                    break;
-            }
-        }
-    }
-
-
-
-    IEnumerator SubmitSceneTx(gltfRef gltfref)
-    {
-        string URL = "http://" + server + "/jsonrpc";
-        string submittx = "{id:1 , jsonrpc: \"2.0\", method:\"submittx\", params : [\"" + gltfref.sceneTx.txid+"\"]}";
-        UnityWebRequest webRequest = UnityWebRequest.Put(URL, submittx);
-        webRequest.SetRequestHeader("Content-Type", "application/json");
-        // Request and wait for the desired page.
-        yield return webRequest.SendWebRequest();
-
-        switch (webRequest.result)
-        {
-            case UnityWebRequest.Result.ConnectionError:
-            case UnityWebRequest.Result.DataProcessingError:
-                Debug.Log("SubmitSceneTx  " + submittx + " : Error: " + webRequest.error);
-                break;
-            case UnityWebRequest.Result.ProtocolError:
-                Debug.Log("SubmitSceneTx  " + submittx + " : HTTP Error: " + webRequest.error);
-                break;
-            case UnityWebRequest.Result.Success:
-
-                Debug.Log("SubmitSceneTx signtxinput" + submittx + " : \nReceived: " + webRequest.downloadHandler.text);
-                
-                StartCoroutine(makenodes(gltfref));
-                break;
-        }
-    }
-
-    IEnumerator signSceneTxInputs(gltfRef gltfref)
-    {
-        string URL = "http://" + server + "/jsonrpc";
-
-
-        for (int n = 0; n < gltfref.sceneTx.txsin.Count; n++)
-        {
-            byte[] derSign = wallet.mainKey.Sign(Org.BouncyCastle.Utilities.Encoders.Hex.Decode(gltfref.sceneTx.txsin[n].signHash), wallet.domainParams);
-            string signtx = "{id:1 , jsonrpc: \"2.0\", method: \"signtxinput\", params : [\"" + gltfref.sceneTx.txid + "\"," + n.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(derSign) + "\",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(wallet.mainKey.getPub().Q.GetEncoded(true)) + "\"]}";
-            UnityWebRequest webRequest = UnityWebRequest.Put(URL, signtx);
-            webRequest.SetRequestHeader("Content-Type", "application/json");
-            // Request and wait for the desired page.
-            yield return webRequest.SendWebRequest();
-
-            switch (webRequest.result)
-            {
-                case UnityWebRequest.Result.ConnectionError:
-                case UnityWebRequest.Result.DataProcessingError:
-                    Debug.Log("signSceneTxInputs  " + signtx + " : Error: " + webRequest.error);
-                    break;
-                case UnityWebRequest.Result.ProtocolError:
-                    Debug.Log("signSceneTxInputs  " + signtx + " : HTTP Error: " + webRequest.error);
-                    break;
-                case UnityWebRequest.Result.Success:
-                    Debug.Log("signSceneTxInputs signtxinput" + signtx + " : \nReceived: " + webRequest.downloadHandler.text);
-                    gltfref.sceneTx.txid = JsonUtility.FromJson<RPCSign>(webRequest.downloadHandler.text).result.txid;
-                    Debug.Log("signSceneTxInputs signtxinput" + gltfref.sceneTx.txid);
-                    break;
-            }
-        }
-        StartCoroutine(addRoomSceneObj(gltfref));
-
-        StartCoroutine(SubmitSceneTx(gltfref));
-    }
-
-
-    IEnumerator makeobjs(vrRoom Room)
-    {
-        string URL = "http://" + server + "/jsonrpc";
-
-
-        for (int n = 0; n < Room.sceneObjects.Count; n++)
-        {
-            gltfRef gltfref = Room.sceneObjects[n];
-            string sceneJSon = "{root : \"" + gltfref.rootHash + "\"}";
-            string makeappobj = "{id:1 , jsonrpc: \"2.0\", method: \"makeappobjtx\", params : [\"" + appName + "\"," + sceneTypeId.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(wallet.mainKey.getPub().Q.GetEncoded(true)) + "\"," + sceneJSon + "]}";
-            Debug.Log("makeobj  " + URL + "  " + makeappobj);
-
-            UnityWebRequest scenewebRequest = UnityWebRequest.Put(URL, makeappobj);
-            scenewebRequest.SetRequestHeader("Content-Type", "application/json");
-            // Request and wait for the desired page.
-            yield return scenewebRequest.SendWebRequest();
-
-            switch (scenewebRequest.result)
-            {
-                case UnityWebRequest.Result.ConnectionError:
-                case UnityWebRequest.Result.DataProcessingError:
-                    Debug.Log("makeobj  " + makeappobj + " : Error: " + scenewebRequest.error);
-                    break;
-                case UnityWebRequest.Result.ProtocolError:
-                    Debug.Log("makeobj  " + makeappobj + " : HTTP Error: " + scenewebRequest.error);
-                    break;
-                case UnityWebRequest.Result.Success:
-
-                    Debug.Log("makeobj " + makeappobj + " : \nReceived: " + scenewebRequest.downloadHandler.text);
-                    gltfref.sceneTx = JsonUtility.FromJson<RPCTransaction>(scenewebRequest.downloadHandler.text).result.transaction;
-                    gltfref.sceneTx.issigned = false;
-                    Debug.Log("makeobj myTransaction" + gltfref.sceneTx.txid + " " + gltfref.sceneTx.txsin.Count);
-                    StartCoroutine(signSceneTxInputs(gltfref));
-
-                    break;
-            }
-        }
-    }
-
-
-    IEnumerator SubmitRoomTx(vrRoom Room)
-    {
-        string URL = "http://" + server + "/jsonrpc";
-        string submittx = "{id:1 , jsonrpc: \"2.0\", method:\"submittx\", params : [\"" + room.roomTx.txid + "\"]}";
-        UnityWebRequest webRequest = UnityWebRequest.Put(URL, submittx);
-        webRequest.SetRequestHeader("Content-Type", "application/json");
-        // Request and wait for the desired page.
-        yield return webRequest.SendWebRequest();
-
-        switch (webRequest.result)
-        {
-            case UnityWebRequest.Result.ConnectionError:
-            case UnityWebRequest.Result.DataProcessingError:
-                Debug.Log("SubmitRoomTx " + submittx + " : Error: " + webRequest.error);
-                break;
-            case UnityWebRequest.Result.ProtocolError:
-                Debug.Log("SubmitRoomTx " + submittx + " : HTTP Error: " + webRequest.error);
-                break;
-            case UnityWebRequest.Result.Success:
-                Debug.Log("SubmitRoomTx " + submittx + " : \nReceived: " + webRequest.downloadHandler.text);
-
-                StartCoroutine(makeobjs(Room));
-                break;
-        }
-    }
-    IEnumerator signRoomTxInputs(vrRoom room)
-    {
-        string URL = "http://" + server + "/jsonrpc";
-
-
-        for (int n = 0; n < room.roomTx.txsin.Count; n++)
-        {
-            byte[] derSign = wallet.mainKey.Sign(Org.BouncyCastle.Utilities.Encoders.Hex.Decode(room.roomTx.txsin[n].signHash), wallet.domainParams);
-            string signtx = "{id:1 , jsonrpc: \"2.0\", method: \"signtxinput\", params : [\"" + room.roomTx.txid + "\"," + n.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(derSign) + "\",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(wallet.mainKey.getPub().Q.GetEncoded(true)) + "\"]}";
-            UnityWebRequest webRequest = UnityWebRequest.Put(URL, signtx);
-            webRequest.SetRequestHeader("Content-Type", "application/json");
-            // Request and wait for the desired page.
-            yield return webRequest.SendWebRequest();
-
-            switch (webRequest.result)
-            {
-                case UnityWebRequest.Result.ConnectionError:
-                case UnityWebRequest.Result.DataProcessingError:
-                    Debug.Log("signRoomTxInputs  " + signtx + " : Error: " + webRequest.error);
-                    break;
-                case UnityWebRequest.Result.ProtocolError:
-                    Debug.Log("signRoomTxInputs  " + signtx + " : HTTP Error: " + webRequest.error);
-                    break;
-                case UnityWebRequest.Result.Success:
-
-                    Debug.Log("signRoomTxInputs signtxinput" + signtx + " : \nReceived: " + webRequest.downloadHandler.text);
-
-                    room.roomTx.txid = JsonUtility.FromJson<RPCSign>(webRequest.downloadHandler.text).result.txid;
-
-                    Debug.Log("signRoomTxInputs signtxinput" + room.roomTx.txid);
-                    break;
-            }
-        }
-
-        room.roomTx.issigned = true;
-
-        StartCoroutine(SubmitRoomTx(room));
-    }
-
-
-    IEnumerator makeroom(vrRoom Room)
-    {
-        string URL = "http://" + server + "/jsonrpc";
-        string roomJSon = "{name : \"" + Room.name + "\"}";
-        string makeapproom = "{id:1 , jsonrpc: \"2.0\", method: \"makeappobjtx\", params : [\"" + appName + "\"," + roomTypeId.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(wallet.mainKey.getPub().Q.GetEncoded(true)) + "\"," + roomJSon + "]}";
-        Debug.Log("makeapproom  " + URL + "  " + makeapproom);
-
-        UnityWebRequest scenewebRequest = UnityWebRequest.Put(URL, makeapproom);
-        scenewebRequest.SetRequestHeader("Content-Type", "application/json");
-        // Request and wait for the desired page.
-        yield return scenewebRequest.SendWebRequest();
-
-        switch (scenewebRequest.result)
-        {
-            case UnityWebRequest.Result.ConnectionError:
-            case UnityWebRequest.Result.DataProcessingError:
-                Debug.Log("makeroom  " + makeapproom + " : Error: " + scenewebRequest.error);
-                break;
-            case UnityWebRequest.Result.ProtocolError:
-                Debug.Log("makeroom  " + makeapproom + " : HTTP Error: " + scenewebRequest.error);
-                break;
-            case UnityWebRequest.Result.Success:
-
-                Debug.Log("makeroom " + makeapproom + " : \nReceived: " + scenewebRequest.downloadHandler.text);
-                Room.roomTx = JsonUtility.FromJson<RPCTransaction>(scenewebRequest.downloadHandler.text).result.transaction;
-                Debug.Log("makeroom myTransaction" + Room.roomTx.txid + " " + Room.roomTx.txsin.Count);
-                Room.roomTx.issigned = false;
-                StartCoroutine(signRoomTxInputs(Room));
-
-                break;
-        }
-    }
-    */
-
-    void saveAllScenes()
-    {
-        Debug.Log("save scenes " + room.sceneObjects.Count);
-        StartCoroutine(room.makeroom(makeSaveInfos()));
-    }
-
-
-    void loadScene(string hash)
-    {
-        string URL = "http://" + server + baseURL + "/page/unity.site/scene/" + hash;
-        
-
-        Debug.Log("loading scene " + URL);
-
-        GameObject obj = new GameObject("Scene " + hash);
-
-        obj.AddComponent<UnityGLTF.GLTFComponent>().GLTFUri = URL;
-        obj.GetComponent<UnityGLTF.GLTFComponent>().Collider = UnityGLTF.GLTFSceneImporter.ColliderType.Box;
-        obj.GetComponent<UnityGLTF.GLTFComponent>().Timeout = 120;
-
-        obj.AddComponent<BoxCollider>().size = new Vector3(0.5f, 0.5f, 0.5f);
-        obj.AddComponent<Rigidbody>().isKinematic = true;
-        obj.AddComponent<XRGrabInteractable>();
-
-        obj.layer = 7;
-
-        objNode on = new objNode(obj);
-
-        for (int n = 0; n < room.sceneObjects.Count; n++)
-        {
-            if (room.sceneObjects[n].rootHash == hash)
-            {
-                room.sceneObjects[n].objs.Add(on);
-                return;
-            }
-        }
-
-        gltfRef myref = new gltfRef(hash);
-        myref.objs.Add(on);
-        room.sceneObjects.Add(myref);
-    }
-
-
-    void loadGLTF(string hash)
-    {
-        string URL = "http://" + server + baseURL + "/obj/" + hash;
-
-
-        Debug.Log("loading scene " + URL);
-
-        GameObject obj = new GameObject("Mesh " + hash);
-
-        obj.AddComponent<UnityGLTF.GLTFComponent>().GLTFUri = URL;
-        obj.GetComponent<UnityGLTF.GLTFComponent>().Timeout = 120;
-        obj.GetComponent<UnityGLTF.GLTFComponent>().Collider = UnityGLTF.GLTFSceneImporter.ColliderType.Box;
-
-
-        if (EditRoomWall)
-        {
-            if (currentWallObj != null)
-                Destroy(currentWallObj);
-
-            currentWallObj = obj;
-            currentWallHash = hash;
-
-            currentWallObj.transform.position = new Vector3(0.0f, 0.0f, -10.0f);
-            currentWallObj.transform.rotation = Quaternion.Euler(-45.0f, 0.0f, 0.0f);
-            currentWallObj.transform.localScale = new Vector3(20.0f, 20.0f, 20.0f);
-
-            var wallObj = GameObject.Find("WallObj");
-            currentWallObj.transform.SetParent(wallObj.transform, false);
-
-        }
-        else
-        {
-            room.addObj(obj, hash);
-
-            obj.layer = 7;
-
-            obj.AddComponent<Rigidbody>();
-            obj.AddComponent<XRGrabInteractable>();
-        }
-    }
-
     IEnumerator loadGalleries()
     {
         string myAddr = galleriesAddress.GetComponentInChildren<InputField>().text;
@@ -2458,11 +1157,8 @@ public class loadGallery : MonoBehaviour
 
                     emptyResult.transform.SetParent(contentPanel.transform, false);
                 }
-
-
                 break;
         }
-
     }
 
     IEnumerator loadRooms()
@@ -2471,7 +1167,6 @@ public class loadGallery : MonoBehaviour
         string URL = "http://" + server + baseURL + "/objlst/" + roomTypeId.ToString() + "/" + myAddr;
 
         Debug.Log("load Rooms " + URL);
-
 
         UnityWebRequest webRequest = UnityWebRequest.Get(URL);
 
@@ -2546,11 +1241,8 @@ public class loadGallery : MonoBehaviour
 
                     emptyResult.transform.SetParent(contentPanel.transform, false);
                 }
-
-
                 break;
         }
-
     }
 
    
@@ -2606,7 +1298,7 @@ public class loadGallery : MonoBehaviour
                         ItemsButton[n].GetComponentInChildren<Text>().text = myGallery.scenes[n].name;
                         ItemsButton[n].name = "item " + myGallery.scenes[n].name;
 
-                        ItemsButton[n].GetComponent<Button>().onClick.AddListener(() => loadGLTF(itemHash));
+                        ItemsButton[n].GetComponent<Button>().onClick.AddListener(() => room.loadGLTF(itemHash));
 
                         itemX += ItemsSpacing[0];
 
@@ -2632,8 +1324,6 @@ public class loadGallery : MonoBehaviour
 
                     emptyResult.transform.SetParent(contentPanel.transform, false);
                 }
-
-               
             break;
         }
     }
@@ -2670,7 +1360,7 @@ public class loadGallery : MonoBehaviour
                 {
                     for (int n = 0; n < mroom.objects.Length; n++)
                     {
-                        loadScene(mroom.objects[n].objHash);
+                        room.loadScene(mroom.objects[n].objHash);
                     }
                 }
              break;
@@ -2689,893 +1379,95 @@ public class loadGallery : MonoBehaviour
         StartCoroutine(loadWebGallery(hash));
     }
 
-    public void ResetGrid()
-    {
-        for (int n = 0; n < grid.cells.Length; n++)
-        {
-            Destroy(grid.cells[n].obj);
-        }
-    }
-
-    void roomEditor()
-    {
-        grid = new Grid(-10, -10, 20, 20, selectedSphereMat, SphereEditMat, defaultSphereMat);
-
-        EditWallPanel = Instantiate(Resources.Load("EditWalls")) as GameObject;
-        GameObject.Find("ToggleWall").GetComponent<Toggle>().onValueChanged.AddListener(ToggleEditWalls);
-        GameObject.Find("ToggleRoom").GetComponent<Toggle>().onValueChanged.AddListener(ToggleEditRoom);
-        GameObject.Find("ToggleSet").GetComponent<Toggle>().onValueChanged.AddListener(ToggleEditWall);
-
-        CreateWalls = true;
-        EditRoomWall = true;
-
-        var CameraOffset = GameObject.Find("Camera Offset");
-        CameraOffset.transform.position = new Vector3(-0, 100.0f, -80.0f);
-        CameraOffset.transform.rotation = Quaternion.Euler(new Vector3(45, 0, 0));
-
-        floorPlane.SetActive(false);
-    }
-
-    void newRoom()
-    {
-        for (int n = 0; n < room.sceneObjects.Count; n++)
-        {
-            for (int i = 0; i < room.sceneObjects[n].objs.Count; i++)
-            {
-                Destroy(room.sceneObjects[n].objs[i].obj);
-            }
-            room.sceneObjects[n].objs = new List<objNode>();
-        }
-        room.sceneObjects = new List<gltfRef>();
-
-        if (wallSegments != null)
-        {
-            for (int n = 0; n < wallSegments.Count; n++)
-            {
-                Destroy(wallSegments[n].defObj);
-            }
-        }
-
-        wallSegments = new List<WallSegment>();
-
-        if (grid != null)
-            ResetGrid();
-
-        if (EditWallPanel != null)
-            Destroy(EditWallPanel);
-
-        roomEditor();
-    }
-
-    public int FindWallSegment(int x, int y)
-    {
-        for (int n = 0; n < wallSegments.Count; n++)
-        {
-            WallSegment mySeg = wallSegments[n];
-
-            if ((mySeg.startCell.X == x)&& (mySeg.startCell.Y == y))
-            {
-                return n;
-            }
-        }
-        return -1;
-    }
-
-    void computeNewSeg()
-    {
-        if (currentSeg == null)
-        {
-            currentSeg = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            currentSeg.GetComponentInChildren<Renderer>().material = wallSegMat;
-            
-            currentSeg.layer = 6;
-        }
-
-        if (wallSegments.Count >= 2)
-        {
-            if (lastSeg == null)
-            {
-                lastSeg = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                lastSeg.GetComponentInChildren<Renderer>().material = wallSegMat;
-                lastSeg.layer = 6;
-            }
-
-            Vector3 ldelta = new Vector3(wallSegments[0].startCell.obj.transform.position.x - hoveredCell.obj.transform.position.x, 0.0f, wallSegments[0].startCell.obj.transform.position.z - hoveredCell.obj.transform.position.z);
-
-            lastSeg.transform.position = new Vector3(hoveredCell.obj.transform.position.x + ldelta.x / 2.0f, -1.0f + wallHeight / 2.0f, hoveredCell.obj.transform.position.z + ldelta.z / 2.0f);
-            lastSeg.transform.localScale = new Vector3(4.0f, wallHeight, ldelta.magnitude);
-
-            ldelta.Normalize();
-            if (ldelta.sqrMagnitude > 0.001f)
-            {
-                double langle;
-
-                langle = Math.Atan2(ldelta.x, ldelta.z);
-                lastSeg.transform.rotation = Quaternion.Euler(0.0f, (float)(langle * 180.0f / Math.PI), 0.0f);
-            }
-        }
-
-        var delta = new Vector3(hoveredCell.obj.transform.position.x - selectedCell.obj.transform.position.x, 0.0f, hoveredCell.obj.transform.position.z - selectedCell.obj.transform.position.z);
-
-        currentSeg.transform.position = new Vector3(selectedCell.obj.transform.position.x + delta.x / 2.0f, -1.0f + wallHeight / 2.0f, selectedCell.obj.transform.position.z + delta.z / 2.0f);
-        currentSeg.transform.localScale = new Vector3(4.0f, wallHeight, delta.magnitude);
-
-        delta.Normalize();
-        if (delta.sqrMagnitude > 0.001f)
-        {
-            double angle;
-
-            angle = Math.Atan2(delta.x, delta.z);
-            currentSeg.transform.rotation = Quaternion.Euler(0.0f, (float)(angle * 180.0f / Math.PI), 0.0f);
-        }
-    }
-
-
-    void updateWallSeg(int n)
-    {
-        int seg1, seg2;
-
-        seg1 = n;
-
-        if ( n == 0)
-        {
-            seg2 = wallSegments.Count - 1;
-        }
-        else
-        {
-            seg2 = n - 1;
-        }
-
-        wallSegments[seg1].startCell = hoveredCell;
-        wallSegments[seg2].endCell = hoveredCell;
-
-
-        string URL = null;
-        
-        if (wallSegments[seg1].gltfObjs != null)
-        {
-            URL = "http://" + server + baseURL + "/obj/" + wallSegments[seg1].gltfObjs.rootHash;
-           for (int i = 0; i < wallSegments[seg1].gltfObjs.objs.Count; i++)
-           {
-               Destroy(wallSegments[seg1].gltfObjs.objs[i].obj);
-           }
-        }
-   
-        wallSegments[seg1].recompute(wallHeight, URL);
-
-        if (wallSegments[seg2].gltfObjs != null)
-        {
-            URL = "http://" + server + baseURL + "/obj/" + wallSegments[seg2].gltfObjs.rootHash;
-            for (int i = 0; i < wallSegments[seg2].gltfObjs.objs.Count; i++)
-            {
-                Destroy(wallSegments[seg2].gltfObjs.objs[i].obj);
-            }
-        }
-
-        wallSegments[seg2].recompute(wallHeight, URL);
-       
-
-    }
-
-    void MakeLastSeg()
-    {
-        if (wallSegments.Count >= 2)
-        {
-            var newSegObj = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            newSegObj.GetComponentInChildren<Renderer>().material = wallSegMat;
-            newSegObj.layer = 6;
-
-            Vector3 ldelta = new Vector3(wallSegments[0].startCell.obj.transform.position.x - wallSegments[wallSegments.Count - 1].endCell.obj.transform.position.x, 0.0f, wallSegments[0].startCell.obj.transform.position.z - wallSegments[wallSegments.Count - 1].endCell.obj.transform.position.z);
-
-            newSegObj.transform.position = new Vector3(wallSegments[wallSegments.Count - 1].endCell.obj.transform.position.x + ldelta.x / 2.0f, -1.0f + wallHeight / 2.0f, wallSegments[wallSegments.Count - 1].endCell.obj.transform.position.z + ldelta.z / 2.0f);
-            newSegObj.transform.localScale = new Vector3(4.0f, wallHeight, ldelta.magnitude);
-
-            ldelta.Normalize();
-            if (ldelta.sqrMagnitude > 0.001f)
-            {
-                double langle;
-                langle = Math.Atan2(ldelta.x, ldelta.z);
-                newSegObj.transform.rotation = Quaternion.Euler(0.0f, (float)(langle * 180.0f / Math.PI), 0.0f);
-            }
-
-           WallSegment seg = new WallSegment();
-
-           seg.defObj = newSegObj;
-           seg.startCell = wallSegments[wallSegments.Count - 1].endCell;
-           seg.endCell = wallSegments[0].startCell;
-
-           seg.defObj.name = "Wall " + wallSegments.Count;
-
-           wallSegments.Add(seg);
-        }
-        if (lastSeg != null)
-        {
-            Destroy(lastSeg);
-            lastSeg = null;
-        }
-        if (currentSeg != null)
-        {
-            Destroy(currentSeg);
-            currentSeg = null;
-        }
-    }
-
-    void removeLastWall()
-    {
-        if (wallSegments.Count >= 2)
-        {
-            Destroy(wallSegments[wallSegments.Count - 1].defObj);
-
-            if (wallSegments[wallSegments.Count - 1].gltfObjs != null)
-            {
-                for (int n = 0; n < wallSegments[wallSegments.Count - 1].gltfObjs.objs.Count; n++)
-                {
-                    Destroy(wallSegments[wallSegments.Count - 1].gltfObjs.objs[n].obj);
-                }
-            }
-
-            wallSegments.RemoveAt(wallSegments.Count - 1);
-        }
-    }
-
-    void EnableCreateWalls()
-    {
-        removeLastWall();
-
-        if (wallSegments.Count > 0)
-            selectedCell = wallSegments[wallSegments.Count - 1].endCell;
-
-        CreateWalls = true;
-        outScope = false;
-    }
-
-    void DisableCreateWalls()
-    {
-        if (hoveredCell != null)
-            hoveredCell.obj.GetComponentInChildren<Renderer>().material = defaultSphereMat;
-
-        if (selectedCell != null)
-            selectedCell.obj.GetComponentInChildren<Renderer>().material = defaultSphereMat;
-
-        hoveredCell = null;
-        selectedCell = null;
-
-        CreateWalls = false;
-    }
-
-    Vector3 findWallCenter()
-    {
-        Vector3 center;
-        Vector3 min, max;
-
-        if (wallSegments.Count < 2)
-            return new Vector3(0.0f, 0.0f, 0.0f);
-        
-        min = wallSegments[0].startCell.obj.transform.position;
-        max = wallSegments[0].startCell.obj.transform.position;
-        for (int n=1;n< wallSegments.Count;n++)
-        {
-            if (wallSegments[n].startCell.obj.transform.position.x < min.x)
-                min.x = wallSegments[n].startCell.obj.transform.position.x;
-
-            if (wallSegments[n].startCell.obj.transform.position.y < min.y)
-                min.y = wallSegments[n].startCell.obj.transform.position.y;
-
-            if (wallSegments[n].startCell.obj.transform.position.z < min.z)
-                min.z = wallSegments[n].startCell.obj.transform.position.z;
-
-            if (wallSegments[n].startCell.obj.transform.position.x > max.x)
-                max.x = wallSegments[n].startCell.obj.transform.position.x;
-
-            if (wallSegments[n].startCell.obj.transform.position.y > max.y)
-                max.y = wallSegments[n].startCell.obj.transform.position.y;
-
-            if (wallSegments[n].startCell.obj.transform.position.z > max.z)
-                max.z = wallSegments[n].startCell.obj.transform.position.z;
-        }
-
-        center = min + (max - min) / 2.0f;
-        return center;
-    }
-
-    Vector2[] computeUvs(Vector3[] vertices)
-    {
-      
-        Vector3 min, max;
-        Vector2 size;
-
-        min = vertices[0];
-        max = vertices[0];
-        for (int n = 0; n < vertices.Length; n++)
-        {
-            if (vertices[n].x < min.x)
-                min.x = vertices[n].x;
-
-            if (vertices[n].y < min.y)
-                min.y = vertices[n].y;
-
-            if (vertices[n].z < min.z)
-                min.z = vertices[n].z;
-
-            if (vertices[n].x > max.x)
-                max.x = vertices[n].x;
-
-            if (vertices[n].y > max.y)
-                max.y = vertices[n].y;
-
-            if (vertices[n].z > max.z)
-                max.z = vertices[n].z;
-        }
-
-        size.x = max.x - min.x;
-        size.y = max.z - min.z;
-
-        Vector2[] uvs = new Vector2[vertices.Length];
-
-        for (int n = 0; n < vertices.Length; n++)
-        {
-            uvs[n].x = (vertices[n].x - min.x)/ size.x;
-            uvs[n].y = (vertices[n].z - min.z)/ size.y;
-        }
-
-
-        return uvs;
-
-
-    }
- 
-
-    Vector3 createFloor()
-    {
-        if (roomFloor != null)
-            Destroy(roomFloor);
-
-        roomFloor = new GameObject();
-        roomFloor.AddComponent<MeshFilter>();
-        roomFloor.AddComponent<MeshRenderer>().material = Instantiate(Resources.Load("FloorMat")) as Material;
-        
-        var mesh = new Mesh();
-        
-        var vertices = new Vector3[wallSegments.Count + 1];
-        var normals = new Vector3[wallSegments.Count + 1];
-        var triangles = new int[(wallSegments.Count +1) * 3];
-
-        vertices[0] = findWallCenter();
-        normals[0] = new Vector3(0.0f, 1.0f,0.0f);
-
-        for (int n = 0; n < wallSegments.Count; n++)
-        {
-            vertices[n + 1] = new Vector3(wallSegments[n].startCell.obj.transform.position.x, wallSegments[n].startCell.obj.transform.position.y, wallSegments[n].startCell.obj.transform.position.z);
-            normals[ n + 1] = new Vector3(0.0f, 1.0f, 0.0f);
-        }
-
-        for (int n = 0; n < wallSegments.Count; n++)
-        {
-            triangles[n * 3 + 0] = n + 1;
-
-            if( n < (wallSegments.Count-1))
-                triangles[n * 3 + 1] = n + 2; 
-            else
-                triangles[n * 3 + 1] = 1;
-
-            triangles[n * 3 + 2] = 0;
-        }
-
-
-        mesh.vertices = vertices;
-        mesh.uv = computeUvs(vertices);
-        mesh.normals = normals;
-        mesh.triangles = triangles;
-
-        roomFloor.GetComponent<MeshFilter>().mesh = mesh;
-        roomFloor.AddComponent<MeshCollider>().sharedMesh = mesh;
-        roomFloor.AddComponent<TeleportationArea>();
-
-        roomFloor.transform.position = new Vector3(0.0f, -1.0f, 0.0f);
-
-        return vertices[0];
-
-       
-
-
-    }
-
-    
-    void ToggleEditRoom(bool state)
-    {
-        if (!state)
-        {
-            Vector3 camPos;
-            if(wallSegments.Count>=2)
-                camPos = createFloor();
-            else
-            {
-               floorPlane.SetActive(true);
-                camPos = new Vector3(0.0f, 1.0f, 0.0f);
-            }
-
-            var CameraOffset = GameObject.Find("Camera Offset");
-            CameraOffset.transform.position = camPos;
-            CameraOffset.transform.rotation = Quaternion.Euler(new Vector3(-12.0f, 0, 0));
-
-            Destroy(EditWallPanel);
-            ResetGrid();
-
-            EditRoomWall = false;
-
-            var rightCont = GameObject.Find("RightHand Controller");
-            if (rightCont != null)
-            {
-                XRRayInteractor xrri = rightCont.GetComponent<XRRayInteractor>();
-                xrri.raycastMask = LayerMask.GetMask("Default") | LayerMask.GetMask("Walls") | LayerMask.GetMask("UI");
-            }
-        }
-        else
-        {
-            var CameraOffset = GameObject.Find("Camera Offset");
-            CameraOffset.transform.position = new Vector3(-0, 100.0f, -80.0f);
-            CameraOffset.transform.rotation = Quaternion.Euler(new Vector3(45, 0, 0));
-
-            GameObject.Find("ToggleWall").GetComponent<Toggle>().enabled = true;
-        }
-    }
-
-    int prevLayerMask;
-    bool SetWallObj;
-    bool lastTrigger;
-    bool hasHeadset;
-
-
-    void ToggleEditWall(bool state)
-    {
-        var rightCont = GameObject.Find("RightHand Controller");
-
-        if (state)
-        {
-            if (rightCont != null)
-            {
-                XRRayInteractor xrri = rightCont.GetComponent<XRRayInteractor>();
-                prevLayerMask = xrri.raycastMask;
-                xrri.raycastMask = LayerMask.GetMask("Walls") | LayerMask.GetMask("UI");
-            }
-
-            GameObject.Find("ToggleWall").GetComponent<Toggle>().isOn = false;
-            SetWallObj = true;
-
-        }
-        else
-        {
-            SetWallObj = false;
-            if (rightCont != null)
-            {
-                XRRayInteractor xrri = rightCont.GetComponent<XRRayInteractor>();
-                xrri.raycastMask = prevLayerMask;
-            }
-        }
-    }
-
-    void ToggleEditWalls(bool state)
-    {
-        var rightCont = GameObject.Find("RightHand Controller");
-
-        if (rightCont != null)
-        {
-            XRRayInteractor xrri = rightCont.GetComponent<XRRayInteractor>();
-            xrri.raycastMask = LayerMask.GetMask("Default") | LayerMask.GetMask("UI");
-        }
-
-        if (!state)
-        {
-            DisableCreateWalls();
-        }
-        else
-        {
-            GameObject.Find("ToggleSet").GetComponent<Toggle>().isOn = false;
-            EnableCreateWalls();
-        }
-    }
-
-     
-  
-    bool hasHMD()
-    {
-        var HMDControllers = new List<UnityEngine.XR.InputDevice>();
-        var desiredCharacteristics = UnityEngine.XR.InputDeviceCharacteristics.HeadMounted;
-        UnityEngine.XR.InputDevices.GetDevicesWithCharacteristics(desiredCharacteristics, HMDControllers);
-
-        if (HMDControllers.Count > 0)
-            return true;
-        else
-            return false;
-    }
-
-    void updateGrid()
-    {
-        Boolean button = false;
-        
-        RaycastHit hit = new RaycastHit();
-        GameObject hitObj = null;
-
-        hasHeadset = hasHMD();
-
-
-        List<UnityEngine.XR.InputDevice> devices = new List<UnityEngine.XR.InputDevice>();
-
-        UnityEngine.XR.InputDevices.GetDevicesWithRole(UnityEngine.XR.InputDeviceRole.RightHanded, devices);
-
-        foreach (var device in devices)
-        {
-            bool Trigger;
-
-            if (device.TryGetFeatureValue(UnityEngine.XR.CommonUsages.triggerButton, out Trigger))
-            {
-                if (Trigger != lastTrigger)
-                    button = Trigger;
-
-                lastTrigger = Trigger;
-            }
-        }
-
-    
-        if(!button)    
-            button = Input.GetMouseButtonDown(0);
-
-        if (button) 
-        {
-            if (selectedCell != null)
-                selectedCell.obj.GetComponentInChildren<Renderer>().material = defaultSphereMat;
-
-            if (CreateWalls)
-            {
-                if (hoveredCell != null)
-                {
-                    if (currentSeg != null)
-                    {
-                        WallSegment seg = new WallSegment();
-
-                        seg.defObj = currentSeg;
-                        seg.startCell = selectedCell;
-                        seg.endCell = hoveredCell;
-
-                        seg.defObj.name = "Wall " + wallSegments.Count;
-
-                        wallSegments.Add(seg);
-
-                        currentSeg = null;
-                    }
-
-                    selectedCell = hoveredCell;
-                    selectedCell.obj.GetComponentInChildren<Renderer>().material = selectedSphereMat;
-                }
-            }
-            else if (SetWallObj)
-            {
-                if ((HoveredWallSeg < 0) && (currentWallObj != null))
-                {
-                    hitObj = null;
-
-                    if (hasHeadset)
-                    {
-                        var rightCont = GameObject.Find("RightHand Controller");
-                        if (rightCont != null)
-                        {
-                            XRRayInteractor xrri = rightCont.GetComponent<XRRayInteractor>();
-                            if (xrri.TryGetCurrent3DRaycastHit(out hit))
-                                hitObj = hit.collider.gameObject;
-                        }
-                    }
-                    else
-                    {
-                        Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
-                        if (Physics.Raycast(ray, out hit, 1000.0f, LayerMask.GetMask("Walls")))
-                            hitObj = hit.collider.gameObject;
-                    }
-
-
-                    if (hitObj != null)
-                    {
-                        int segNum = Int32.Parse(hitObj.name.Substring(5));
-                        Vector3[] pos = wallSegments[segNum].getArray(10.0f);
-                        double angle = wallSegments[segNum].getAngle();
-
-                        float scaleZ = wallSegments[segNum].getDirection().magnitude/(10.0f * pos.Length);
-
-                        wallSegments[segNum].gltfObjs = new gltfRef(currentWallHash);
-
-                        for (int n = 0; n < pos.Length; n++)
-                        {
-                            objNode node = new objNode(GameObject.Instantiate<GameObject>(currentWallObj));
-                            var mesh = currentWallObj.GetComponentInChildren<MeshFilter>().mesh;
-
-                            node.obj.transform.position = new Vector3(pos[n].x, -mesh.bounds.min.y, pos[n].z);
-                            node.obj.transform.localScale = new Vector3(10.0f * scaleZ, 10.0f, 10.0f );
-                            node.obj.transform.rotation = Quaternion.Euler(new Vector3(0, (float)((angle * 180.0) / Math.PI) + 90.0f, 0));
-
-                            node.obj.AddComponent<BoxCollider>().size = mesh.bounds.size;
-
-                            wallSegments[segNum].gltfObjs.objs.Add(node);
-                        }
-
-                        wallSegments[segNum].defObj.SetActive(false);
-                    }
-
-                }
-            }
-            else
-            {
-                if ((SelectedWallSeg < 0) && (HoveredWallSeg >= 0))
-                    SelectedWallSeg = HoveredWallSeg;
-                else
-                    SelectedWallSeg = -1;
-            }
-        }
-
-        if (selectedCell != null)
-            selectedCell.obj.GetComponentInChildren<Renderer>().material = selectedSphereMat;
-
-        if (hoveredCell != null)
-        {
-            hoveredCell.obj.GetComponentInChildren<Renderer>().material = defaultSphereMat;
-            hoveredCell = null;
-        }
-
-
-        hitObj = null;
-
-        if (hasHeadset)
-        {
-            var rightCont = GameObject.Find("RightHand Controller");
-            if (rightCont != null)
-            {
-                XRRayInteractor xrri = rightCont.GetComponent<XRRayInteractor>();
-                if (xrri.TryGetCurrent3DRaycastHit(out hit))
-                {
-                    hitObj = hit.collider.gameObject;
-                }
-            }
-        }
-        else
-        {
-            Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
-
-            if (Physics.Raycast(ray, out hit, 1000.0f, LayerMask.GetMask("Default")))
-            {
-                hitObj = hit.collider.gameObject;
-            }
-        }
-
-        if (hitObj != null)
-        { 
-            if (outScope == true)
-            {
-                if (CreateWalls)
-                {
-                    removeLastWall();
-                }
-                outScope = false;
-            }
-
-            hoveredCell = grid.FindCellByName(hitObj.name);
-        }
-        else
-        {
-            if (outScope == false)
-            {
-                if (CreateWalls)
-                    MakeLastSeg();
-
-                outScope = true;
-            }
-        }
-
-
-        if (hoveredCell != null)
-        {
-            int myx = hoveredCell.X;
-            int myy = hoveredCell.Y;
-
-            hoveredCell.obj.GetComponentInChildren<Renderer>().material = selectedSphereMat;
-
-            if (CreateWalls)
-            {
-                if (selectedCell != null)
-                    computeNewSeg();
-            }
-            else
-            {
-                if (SelectedWallSeg < 0)
-                {
-                    HoveredWallSeg = FindWallSegment(myx, myy);
-
-                    if (HoveredWallSeg >= 0)
-                    {
-                        hoveredCell.obj.GetComponentInChildren<Renderer>().material = SphereEditMat;
-                    }
-                }
-                else
-                {
-                    updateWallSeg(SelectedWallSeg);
-                }
-            }
-        }
-    }
-
-
- 
-    void closeObjPanel()
-    {
-        if (ObjPannel != null)
-        {
-            ObjPannel.GetComponent<ObjSelection>().Close();
-            Destroy(ObjPannel);
-            ObjPannel = null;
-        }
-    }
-
-    void showObjPannel()
-    {
-        if(ObjPannel == null)
-            ObjPannel = Instantiate(Resources.Load("ObjCanvas")) as GameObject;
-
-        ObjPannel.GetComponent<ObjSelection>().SelectRoomObject = hoverRoomObject;
-        ObjPannel.GetComponent<ObjSelection>().wallet = wallet;
-
-        GameObject.Find("CloseObjPanel").GetComponent<Button>().onClick.AddListener(closeObjPanel);
-    }
-
-    bool flip = false;
-    Quaternion Q1, Q2, QT;
-
-
-        // Update is called once per frame
+    // Update is called once per frame
     void Update()
     {
-        if (EditRoomWall)
-            updateGrid();
-        else
+
+        if (room.isEditingWall())
+            return;
+
+        var Cam = GameObject.Find("Camera Offset");
+
+        for (int cc = 0; cc < 2; cc++)
         {
-            var Cam = GameObject.Find("Camera Offset");
+            var HandControllers = new List<UnityEngine.XR.InputDevice>();
+            var desiredCharacteristics = UnityEngine.XR.InputDeviceCharacteristics.HeldInHand;
 
-            for (int cc = 0; cc < 2; cc++)
+            if (cc == 0)
+                desiredCharacteristics |= UnityEngine.XR.InputDeviceCharacteristics.Left;
+            else
+                desiredCharacteristics |= UnityEngine.XR.InputDeviceCharacteristics.Right;
+
+            UnityEngine.XR.InputDevices.GetDevicesWithCharacteristics(desiredCharacteristics, HandControllers);
+
+            foreach (var device in HandControllers)
             {
-                var HandControllers = new List<UnityEngine.XR.InputDevice>();
-                var desiredCharacteristics = UnityEngine.XR.InputDeviceCharacteristics.HeldInHand;
-
-                if (cc == 0)
-                    desiredCharacteristics |= UnityEngine.XR.InputDeviceCharacteristics.Left;
-                else
-                    desiredCharacteristics |= UnityEngine.XR.InputDeviceCharacteristics.Right;
-
-                UnityEngine.XR.InputDevices.GetDevicesWithCharacteristics(desiredCharacteristics, HandControllers);
-
-                foreach (var device in HandControllers)
+                Vector2 Axis;
+                if (device.TryGetFeatureValue(UnityEngine.XR.CommonUsages.primary2DAxis, out Axis))
                 {
-                    Vector2 Axis;
-                    if (device.TryGetFeatureValue(UnityEngine.XR.CommonUsages.primary2DAxis, out Axis))
+                    if (canSnap[cc])
                     {
-                        if (canSnap[cc])
+                        if (Axis.x < -0.5f)
                         {
-                            if (Axis.x < -0.5f)
-                            {
-                                currentRotation.x -= 45.0f;
-                                canSnap[cc] = false;
-                            }
-
-                            if (Axis.x > 0.5f)
-                            {
-                                currentRotation.x += 45.0f;
-                                canSnap[cc] = false;
-                            }
+                            currentRotation.x -= 45.0f;
+                            canSnap[cc] = false;
                         }
 
-                        if (Axis.magnitude < 0.5f)
-                            canSnap[cc] = true;
+                        if (Axis.x > 0.5f)
+                        {
+                            currentRotation.x += 45.0f;
+                            canSnap[cc] = false;
+                        }
                     }
-                }
-                lastSnapTime = Time.fixedUnscaledTime;
-            }
 
-
-            GameObject hitObj = null;
-            RaycastHit hit = new RaycastHit();
-
-           
-            if ( ((ObjPannel == null ) || (ObjPannel.GetComponent<ObjSelection>().MoveObj == 0)) && (Input.GetMouseButton(0)))
-            {
-                currentRotation.x += Input.GetAxis("Mouse X") * sensitivity;
-                currentRotation.y -= Input.GetAxis("Mouse Y") * sensitivity;
-                currentRotation.x = Mathf.Repeat(currentRotation.x, 360);
-                currentRotation.y = Mathf.Clamp(currentRotation.y, -maxYAngle, maxYAngle);
-                Cam.transform.rotation = Quaternion.Euler(currentRotation.y, currentRotation.x, 0);
-            }
-
-            if (hasHeadset)
-            {
-                var rightCont = GameObject.Find("RightHand Controller");
-                if (rightCont != null)
-                {
-                    XRRayInteractor xrri = rightCont.GetComponent<XRRayInteractor>();
-                    if (xrri.TryGetCurrent3DRaycastHit(out hit))
-                    {
-                        hitObj = hit.collider.gameObject;
-                    }
+                    if (Axis.magnitude < 0.5f)
+                        canSnap[cc] = true;
                 }
             }
-            else
-            {
-                Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+            lastSnapTime = Time.fixedUnscaledTime;
+        }
 
+        
+        if ( (!room.hasObjPanel()) && (Input.GetMouseButton(0)))
+        {
+            currentRotation.x += Input.GetAxis("Mouse X") * sensitivity;
+            currentRotation.y -= Input.GetAxis("Mouse Y") * sensitivity;
+            currentRotation.x = Mathf.Repeat(currentRotation.x, 360);
+            currentRotation.y = Mathf.Clamp(currentRotation.y, -maxYAngle, maxYAngle);
+            Cam.transform.rotation = Quaternion.Euler(currentRotation.y, currentRotation.x, 0);
+        }
 
-               if (Physics.Raycast(ray, out hit, 1000.0f, LayerMask.GetMask("Objetcs")))
-                {
-                    if (hoverRoomObject == null)
-                    {
-                        hoverRoomObject = hit.collider.gameObject;
-                        hoverRoomObject.AddComponent<Blinker>();
-                    }
-                    else if (hoverRoomObject.GetHashCode() != hit.collider.gameObject.GetHashCode())
-                    {
-                        Destroy(hoverRoomObject.GetComponent<Blinker>());
+        Vector3 dir = Cam.transform.rotation * Vector3.forward;
+        dir.y = 0.0f;
+        Vector3 dir2 = Quaternion.Euler(0.0f, 90.0f, 0.0f) * dir;
+        Vector3 lastPos;
 
-                        hoverRoomObject = hit.collider.gameObject;
-                        hoverRoomObject.AddComponent<Blinker>();
-                    }
-                    
-                    Debug.Log("hit obj " + hit.collider.gameObject.name);
+        lastPos = new Vector3(Cam.transform.position.x, Cam.transform.position.y, Cam.transform.position.z);
+        if (Input.GetKey("up"))
+        {
+            Cam.transform.position += dir * Time.deltaTime * speed;
+        }
+        if (Input.GetKey("down"))
+        {
+            Cam.transform.position -= dir * Time.deltaTime * speed;
+        }
+        if (Input.GetKey("left"))
+        {
+            Cam.transform.position -= dir2 * Time.deltaTime * speed;
+        }
+        if (Input.GetKey("right"))
+        {
+            Cam.transform.position += dir2 * Time.deltaTime * speed;
+        }
+        
+        int layerMask = LayerMask.GetMask("Default") | LayerMask.GetMask("Walls");
 
-                    Debug.Log("hit obj scale1 " + hoverRoomObject.transform.localScale.ToString());
-                    Debug.Log("hit obj scale2 " + hoverRoomObject.GetComponentInChildren<MeshFilter>().transform.localScale.ToString());
-
-                }
-                else if (hoverRoomObject != null)
-                {
-                    Destroy(hoverRoomObject.GetComponent<Blinker>());
-                    hoverRoomObject = null;
-                }
-            }
-
-
-            if(Input.GetMouseButtonDown(0))
-            {
-                if (hoverRoomObject != null)
-                {
-                    showObjPannel();
-                }
-            }
-
-            Vector3 dir = Cam.transform.rotation * Vector3.forward;
-            dir.y = 0.0f;
-            Vector3 dir2 = Quaternion.Euler(0.0f, 90.0f, 0.0f) * dir;
-            Vector3 lastPos;
-
-            lastPos = new Vector3(Cam.transform.position.x, Cam.transform.position.y, Cam.transform.position.z);
-            if (Input.GetKey("up"))
-            {
-                Cam.transform.position += dir * Time.deltaTime * speed;
-            }
-            if (Input.GetKey("down"))
-            {
-                Cam.transform.position -= dir * Time.deltaTime * speed;
-            }
-            if (Input.GetKey("left"))
-            {
-                Cam.transform.position -= dir2 * Time.deltaTime * speed;
-            }
-            if (Input.GetKey("right"))
-            {
-                Cam.transform.position += dir2 * Time.deltaTime * speed;
-            }
-            
-            int layerMask = LayerMask.GetMask("Default") | LayerMask.GetMask("Walls");
-
-            Collider[] hitColliders = Physics.OverlapBox(Cam.transform.position, Cam.transform.localScale / 2, Quaternion.identity, layerMask);
-            //Check when there is a new collider coming into contact with the box
-            if(hitColliders.Length>0)
-            {
-                //Output all of the collider names
-                Cam.transform.position = new Vector3(lastPos.x, lastPos.y, lastPos.z);
-            }
-            
+        Collider[] hitColliders = Physics.OverlapBox(Cam.transform.position, Cam.transform.localScale / 2, Quaternion.identity, layerMask);
+        //Check when there is a new collider coming into contact with the box
+        if(hitColliders.Length>0)
+        {
+            //Output all of the collider names
+            Cam.transform.position = new Vector3(lastPos.x, lastPos.y, lastPos.z);
         }
     }
 }
