@@ -221,7 +221,15 @@ namespace UnityGLTF
 			}
 		}
 
-		public GLTFSceneImporter(GLTFRoot rootNode, Stream gltfStream, ImportOptions options)
+        public string getRootKey()
+        {
+            if (_gltfRoot == null)
+                return null;
+
+            return _gltfRoot.objKey;
+        }
+
+        public GLTFSceneImporter(GLTFRoot rootNode, Stream gltfStream, ImportOptions options)
 		{
 			_gltfRoot = rootNode;
 
@@ -1265,8 +1273,17 @@ namespace UnityGLTF
 				{
 					Resources.UnloadUnusedAssets();
 				}
+                System.Net.WebException exx = ex.InnerException as System.Net.WebException ;
 
-				throw;
+                Debug.Log("execption " + ex.GetType().Name + " " + ex.GetType().FullName +" " + ex.Message);
+
+
+
+
+
+
+
+                throw;
 			}
 		}
 
@@ -2103,6 +2120,7 @@ namespace UnityGLTF
 		/// <param name="markGpuOnly">Whether the texture is GPU only, instead of keeping a CPU copy</param>
 		/// <param name="isLinear">Whether the texture is linear rather than sRGB</param>
 		/// <returns>The loading task</returns>
+        /// 
 		public virtual async Task LoadTextureAsync(GLTFTexture texture, int textureIndex, bool markGpuOnly, bool isLinear)
 		{
 			try

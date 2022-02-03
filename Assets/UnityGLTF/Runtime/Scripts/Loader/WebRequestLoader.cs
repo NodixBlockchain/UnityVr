@@ -56,6 +56,8 @@ namespace UnityGLTF.Loader
 
 			response.EnsureSuccessStatusCode();
 
+            Console.WriteLine("responde " + response.StatusCode);
+
 			// HACK: Download the whole file before returning the stream
 			// Ideally the parsers would wait for data to be available, but they don't.
 			var result = new MemoryStream((int?)response.Content.Headers.ContentLength ?? 5000);

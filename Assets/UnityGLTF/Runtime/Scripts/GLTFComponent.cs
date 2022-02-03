@@ -40,8 +40,9 @@ namespace UnityGLTF
 
 		[SerializeField]
 		private Shader shaderOverride = null;
+        private string rootPubKey = null;
 
-		private async void Start()
+        private async void Start()
 		{
 			if (!loadOnStart) return;
 			
@@ -52,19 +53,24 @@ namespace UnityGLTF
 #if WINDOWS_UWP
 			catch (Exception)
 #else
-			catch (HttpRequestException)
+			catch (HttpRequestException ex)
 #endif
 			{
 				if (numRetries++ >= RetryCount)
 					throw;
 
-				Debug.LogWarning("Load failed, retrying");
+				Debug.LogWarning("Load failed, retrying "+ex.GetType().Name+" "+ex.Message);
 				await Task.Delay((int)(RetryTimeout * 1000));
 				Start();
 			}
 		}
 
-		public async Task Load()
+        public string getRootPubKey()
+        {
+            return rootPubKey;
+        }
+
+        public async Task Load()
 		{
             if (GLTFUri == null)
             {
@@ -147,10 +153,24 @@ namespace UnityGLTF
 					}
 				}
 
-				print("model loaded with vertices: " + sceneImporter.Statistics.VertexCount.ToString() + ", triangles: " + sceneImporter.Statistics.TriangleCount.ToString());
+				print("model loaded with vertices: " + sceneImporter.Statistics.VertexCount.ToString() + ", triangles: " + sceneImporter.Statistics.TriangleCount.ToString() +", root key: "+ sceneImporter.getRootKey());
 				LastLoadedScene = sceneImporter.LastLoadedScene;
+                rootPubKey = sceneImporter.getRootKey();
 
-				Animations = sceneImporter.LastLoadedScene.GetComponents<Animation>();
+                var mesh = sceneImporter.LastLoadedScene.GetComponentInChildren<MeshFilter>();
+                /*
+                this.transform.localPosition = mesh.transform.localPosition;
+                this.transform.localRotation= mesh.transform.localRotation;
+                this.transform.localScale = mesh.transform.localScale;
+
+                mesh.transform.localPosition = new Vector3(0.0f, 0.0f, 0.0f);
+                mesh.transform.localRotation = new Quaternion();
+                mesh.transform.localScale = new Vector3(1.0f, 1.0f, 1.0f);
+                */
+
+                GetComponent<BoxCollider>().size = mesh.mesh.bounds.size;
+
+                Animations = sceneImporter.LastLoadedScene.GetComponents<Animation>();
 
 				if (PlayAnimationOnLoad && Animations.Any())
 				{

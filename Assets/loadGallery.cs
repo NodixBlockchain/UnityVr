@@ -26,9 +26,13 @@ using UnityEngine;
 using Unity;
 
 using GLTF;
+using UnityGLTF.Extensions;
+
 using UnityEngine.UI;
-using UnityEngine.XR.Interaction.Toolkit;
 using UnityEngine.Networking;
+
+
+/*using FASTER.core;*/
 
 [System.Serializable]
 public class GalleryScene
@@ -85,6 +89,8 @@ public class NodePrivaKey
 [System.Serializable]
 public class WalletAddress
 {
+    
+
     public WalletAddress()
     {
         Name = null;
@@ -92,12 +98,16 @@ public class WalletAddress
         PrivKey = null;
     }
 
+    
+
     public byte[] Sign(byte[] data, ECDomainParameters domain)
     {
         byte[] key;
         ECPrivateKeyParameters privateKey;
         ECPublicKeyParameters publicParams;
         Org.BouncyCastle.Math.EC.ECPoint Q;
+
+     
 
         key = WalletAddress.base58ToByteArray(PrivKey);
 
@@ -215,6 +225,16 @@ public class WalletAddress
         Debug.Log("new WalletAddress " + PubAddr + "\nPrivate :\n"+PrivKey);
     }
 
+    public WalletAddress(string name, byte[] pk, ECDomainParameters dom )
+    {
+        ECPoint Q = dom.Curve.DecodePoint(pk);
+        ECPublicKeyParameters pkey = new ECPublicKeyParameters(Q, dom);
+
+        Name = name;
+        PubAddr = pub2addr(pkey);
+        PrivKey = null;
+    }
+
     public WalletAddress(string name, string pubAddr)
     {
         Name    = name;
@@ -278,6 +298,8 @@ public class WalletAddress
         Q = privateKey.Parameters.G.Multiply(privateKey.D);
         publicParams = new ECPublicKeyParameters(privateKey.AlgorithmName, Q, SecObjectIdentifiers.SecP256k1);
 
+
+        
         return publicParams;
     }
 
@@ -606,18 +628,14 @@ public class vrRoom
     public string name;
     public List<gltfRef> sceneObjects;
     public Transaction roomTx;
-
+    MonoBehaviour mono;
     SaveInfo saveInfos;
-
-    //Wallet wallet;
 
     public vrRoom(MonoBehaviour Mono)
     {
         mono = Mono;
         sceneObjects = new List<gltfRef>();
     }
-
-    MonoBehaviour mono;
 
     public void addObj(GameObject obj, string hash)
     {
@@ -803,17 +821,23 @@ public class vrRoom
         mono.StartCoroutine(SubmitNodesTx(gltfref));
     }
 
-
     IEnumerator makenodes(gltfRef gltfref)
     {
         string URL = "http://" + saveInfos.server + "/jsonrpc";
-
 
         for (int n = 0; n < gltfref.objs.Count; n++)
         {
             GameObject obj = gltfref.objs[n].obj;
 
-            var nodeJson = "{name: \"node " + n.ToString() + "\", translation: [" + obj.transform.position[0].ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + obj.transform.position[1].ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + obj.transform.position[2].ToString(System.Globalization.CultureInfo.InvariantCulture) + "] , scale: [" + obj.transform.localScale[0].ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + obj.transform.localScale[1].ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + obj.transform.localScale[2].ToString(System.Globalization.CultureInfo.InvariantCulture) + "], rotation: [" + obj.transform.rotation.x.ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + obj.transform.rotation.y.ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + obj.transform.rotation.z.ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + obj.transform.rotation.w.ToString(System.Globalization.CultureInfo.InvariantCulture) + "]}";
+            Quaternion TotalQ = obj.transform.localRotation * obj.GetComponentInChildren<MeshFilter>().transform.localRotation;
+            GLTF.Math.Quaternion myQ = TotalQ.ToGltfQuaternionConvert();
+            Vector3 mP = new Vector3(obj.transform.position.x * SchemaExtensions.CoordinateSpaceConversionScale.X, obj.transform.position.y * SchemaExtensions.CoordinateSpaceConversionScale.Y, obj.transform.position.z * SchemaExtensions.CoordinateSpaceConversionScale.Z);
+            Vector3 Scale = obj.GetComponentInChildren<MeshFilter>().transform.localScale;
+
+            var nodeJson = "{name: \"node " + n.ToString() + "\", ";
+            nodeJson += "translation: [" + mP[0].ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + mP[1].ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + mP[2].ToString(System.Globalization.CultureInfo.InvariantCulture) + "], ";
+            nodeJson += "scale: [" + Scale.x.ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + Scale.y.ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + Scale.z.ToString(System.Globalization.CultureInfo.InvariantCulture) + "], ";
+            nodeJson += "rotation: [" + myQ.X.ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + myQ.Y.ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + myQ.Z.ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + myQ.W.ToString(System.Globalization.CultureInfo.InvariantCulture) + "]}";
 
             string makenodeobj = "{id:1 , jsonrpc: \"2.0\", method:\"makeappobjtx\", params : [\"" + this.saveInfos.appName + "\"," + this.saveInfos.nodeTypeId.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(this.saveInfos.mainKey.getPub().Q.GetEncoded(true)) + "\"," + nodeJson + "]}";
 
@@ -840,10 +864,8 @@ public class vrRoom
                     break;
             }
         }
-
         mono.StartCoroutine(signNodesTxInputs(gltfref));
     }
-
 
     IEnumerator addRoomSceneObj(gltfRef gltfref)
     {
@@ -890,8 +912,6 @@ public class vrRoom
         }
     }
 
-
-
     IEnumerator SubmitSceneTx(gltfRef gltfref)
     {
         string URL = "http://" + saveInfos.server + "/jsonrpc";
@@ -923,7 +943,6 @@ public class vrRoom
     {
         string URL = "http://" + saveInfos.server + "/jsonrpc";
 
-
         for (int n = 0; n < gltfref.sceneTx.txsin.Count; n++)
         {
             byte[] derSign = this.saveInfos.mainKey.Sign(Org.BouncyCastle.Utilities.Encoders.Hex.Decode(gltfref.sceneTx.txsin[n].signHash), this.saveInfos.domainParams);
@@ -954,11 +973,9 @@ public class vrRoom
         mono.StartCoroutine(SubmitSceneTx(gltfref));
     }
 
-
     IEnumerator makeobjs()
     {
         string URL = "http://" + saveInfos.server + "/jsonrpc";
-
 
         for (int n = 0; n < this.sceneObjects.Count; n++)
         {
@@ -988,12 +1005,10 @@ public class vrRoom
                     gltfref.sceneTx.issigned = false;
                     Debug.Log("makeobj myTransaction" + gltfref.sceneTx.txid + " " + gltfref.sceneTx.txsin.Count);
                     mono.StartCoroutine(signSceneTxInputs(gltfref));
-
                     break;
             }
         }
     }
-
 
     IEnumerator SubmitRoomTx()
     {
@@ -1247,7 +1262,47 @@ class Grid
 }
 
 
+class Blinker : MonoBehaviour
+{
+    double cur;
+    Color[] matCols;
+    void Start()
+    {
+        MeshRenderer mrs = GetComponentInChildren<MeshRenderer>();
+        cur = 0;
 
+        matCols = new Color[mrs.materials.Length];
+
+        for (int n = 0; n < mrs.materials.Length; n++)
+        {
+            matCols[n] = mrs.materials[n].color;
+        }
+    }
+    void Update()
+    {
+        MeshRenderer mrs = GetComponentInChildren<MeshRenderer>();
+        cur += Time.deltaTime;
+        float alpha = (float)(Math.Sin(cur * 4.0f) + 1.0f) / 2.0f;
+
+        for(int n=0;n< mrs.materials.Length;n++)
+        {
+            mrs.materials[n].SetColor("_Color", new Color(matCols[n].r * alpha, matCols[n].g * alpha, matCols[n].b * alpha, matCols[n].a * alpha));
+        }
+
+    }
+
+    void OnDestroy()
+    {
+        MeshRenderer mrs = GetComponentInChildren<MeshRenderer>();
+
+        for (int n = 0; n < mrs.materials.Length; n++)
+        {
+            mrs.materials[n].SetColor("_Color", new Color(matCols[n].r, matCols[n].g , matCols[n].b , matCols[n].a ));
+        }
+    }
+
+
+}
 
 public class loadGallery : MonoBehaviour
 {
@@ -1291,6 +1346,7 @@ public class loadGallery : MonoBehaviour
     public Vector2 ItemsSpacing = new Vector2(35.0f, -30.0f);
 
     public GameObject contentPanel;
+    public GameObject indexPanel;
     public Font textFont;
 
     public float wallHeight = 10.0f;
@@ -1342,6 +1398,13 @@ public class loadGallery : MonoBehaviour
     private GameObject currentWallObj;
     private string currentWallHash;
 
+    private GameObject ObjPannel = null;
+    private GameObject hoverRoomObject = null;
+
+    private float lastSnapTime = 0.0f;
+    private bool[] canSnap;
+    private GameObject floorPlane;
+
 
     SaveInfo makeSaveInfos()
     {
@@ -1358,9 +1421,6 @@ public class loadGallery : MonoBehaviour
         return ret;
     }
 
-    float lastSnapTime = 0.0f;
-    bool[] canSnap;
-
 
     // Start is called before the first frame update
     void Start()
@@ -1372,7 +1432,8 @@ public class loadGallery : MonoBehaviour
 
         canSnap[0] = true;
         canSnap[1] = true;
-        
+
+        floorPlane = GameObject.Find("FloorPlane");
 
         room = new vrRoom(this);
         roomMenu = null;
@@ -1385,7 +1446,7 @@ public class loadGallery : MonoBehaviour
         Nodes = new List<Node>();
         Nodes.Add(SeedNode);
 
-        nodesTable = new itemTable(new string[] { "adress", "ip", "port", "ping" }, 35.0f);
+        nodesTable = new itemTable(new string[] { "adress", "ip", "port", "ping" }, 50.0f);
         walletTable = new itemTable(new string[] { "label", "adress", "owner" }, 65.0f);
 
         if (selectedSphereMat != null)
@@ -1408,27 +1469,7 @@ public class loadGallery : MonoBehaviour
         StartCoroutine(loadRooms());
 
         /*
-        var log = Devices.CreateLogDevice("hlog.log"); // backing storage device
-
-        // hash table size (number of 64-byte buckets)
-        // log settings (devices, page size, memory size, etc.)
-        var store = new FasterKV<long, long>(1L << 20, new LogSettings { LogDevice = log } );
-
-        // Create a session per sequence of interactions with FASTER
-        // We use default callback functions with a custom merger: RMW merges input by adding it to value
-        var s = store.NewSession(new SimpleFunctions<long, long>((a, b) => a + b));
-        long key = 1, value = 1, input = 10, output = 0;
-
-        // Upsert and Read
-        s.Upsert(ref key, ref value);
-        s.Read(ref key, ref output);
-        Debug.Assert(output == value);
-
-        // Read-Modify-Write (add input to value)
-        s.RMW(ref key, ref input);
-        s.RMW(ref key, ref input);
-        s.Read(ref key, ref output);
-        Debug.Assert(output == value + 20);
+       
         */
         //var Teleport = new Locom
         /*StartCoroutine(wallet.getnodepriv("BitAdmin", "B8mPBEg2XbYSUwEh5a7yrfehvMNijpAm1P"));*/
@@ -1536,21 +1577,17 @@ public class loadGallery : MonoBehaviour
 
         ClearTabs();
 
+        contentPanel.transform.localPosition = new Vector3(0.0f, 0.0f, 0.0f);
+        indexPanel.transform.localPosition = new Vector3(0.0f, 0.0f, 0.0f);
+
         roomMenu = Instantiate(Resources.Load("Room Menu")) as GameObject;
 
         var panel = GameObject.Find("Panel");
         var newButton = roomMenu.transform.Find("New Button");
         var saveButton = roomMenu.transform.Find("Save Button");
 
-        if (newButton != null)
-        {
-            newButton.GetComponent<Button>().onClick.AddListener(() => newRoom());
-        }
-
-        if (SaveButton != null)
-        {
-            saveButton.GetComponent<Button>().onClick.AddListener(() => saveAllScenes());
-        }
+         newButton.GetComponent<Button>().onClick.AddListener(() => newRoom());
+         saveButton.GetComponent<Button>().onClick.AddListener(() => saveAllScenes());
 
         roomMenu.transform.SetParent(panel.transform, false);
 
@@ -1565,6 +1602,9 @@ public class loadGallery : MonoBehaviour
 
         ClearTabs();
 
+        contentPanel.transform.localPosition = new Vector3(0.0f, 0.0f, 0.0f);
+        indexPanel.transform.localPosition = new Vector3(0.0f, 0.0f, 0.0f);
+
         StartCoroutine(loadGalleries());
     }
 
@@ -1577,7 +1617,14 @@ public class loadGallery : MonoBehaviour
 
         ClearTabs();
 
+        contentPanel.GetComponent<GridLayoutGroup>().cellSize = new Vector2(nodesTable.Size, 30.0f);
+        contentPanel.GetComponent<GridLayoutGroup>().padding.top = 20;
+
+        contentPanel.transform.localPosition = new Vector3(0.0f, 0.0f, 0.0f);
+        indexPanel.transform.localPosition = new Vector3(0.0f, 0.0f, 0.0f);
+
         Headers = new GameObject[nodesTable.Fields.Length];
+        var panel = GameObject.Find("Panel");
 
         for (int n = 0; n < nodesTable.Fields.Length; n++)
         {
@@ -1585,10 +1632,13 @@ public class loadGallery : MonoBehaviour
 
             Headers[n].AddComponent<Text>().text = nodesTable.Fields[n];
             Headers[n].GetComponent<Text>().font = textFont;
+            Headers[n].GetComponent<Text>().resizeTextForBestFit = true;
             Headers[n].GetComponent<Text>().alignment = TextAnchor.MiddleCenter;
-            Headers[n].transform.position = new Vector3(StartPos[0] + nodesTable.Size * n, StartPos[1], 0.0f);
+            Headers[n].GetComponent<RectTransform>().sizeDelta = new Vector2(50.0f,20.0f);
+            Headers[n].transform.position = new Vector3(-34.0f , 8.0f, 0.0f);
             Headers[n].transform.localScale = new Vector3(0.4f,1.0f, 1.0f);
             Headers[n].transform.SetParent(contentPanel.transform, false);
+
         }
 
         nodesTable.NodeRow = new NodeTableRow[Nodes.Count];
@@ -1602,6 +1652,7 @@ public class loadGallery : MonoBehaviour
             nodesTable.NodeRow[n].Columns[0].AddComponent<Text>().text = Nodes[n].address;
             nodesTable.NodeRow[n].Columns[0].GetComponent<Text>().font = textFont;
             nodesTable.NodeRow[n].Columns[0].GetComponent<Text>().alignment = TextAnchor.MiddleCenter;
+            nodesTable.NodeRow[n].Columns[0].GetComponent<Text>().resizeTextForBestFit = true;
 
             nodesTable.NodeRow[n].Columns[0].transform.position = new Vector3(StartPos[0], StartPos[1] + (n + 1) * Spacing[1] , 0);
             nodesTable.NodeRow[n].Columns[0].transform.localScale = new Vector3(0.4f, 1.0f, 1.0f);
@@ -1612,8 +1663,9 @@ public class loadGallery : MonoBehaviour
             nodesTable.NodeRow[n].Columns[1].AddComponent<Text>().text = Nodes[n].ip.ToString();
             nodesTable.NodeRow[n].Columns[1].GetComponent<Text>().font = textFont;
             nodesTable.NodeRow[n].Columns[1].GetComponent<Text>().alignment = TextAnchor.MiddleCenter;
+            nodesTable.NodeRow[n].Columns[1].GetComponent<Text>().resizeTextForBestFit = true;
 
-            nodesTable.NodeRow[n].Columns[1].transform.position = new Vector3(StartPos[0] + nodesTable.Size, StartPos[1] + (n + 1) * Spacing[1], 0);
+            nodesTable.NodeRow[n].Columns[1].transform.position = new Vector3(StartPos[0] , StartPos[1] + (n + 1) * Spacing[1], 0);
             nodesTable.NodeRow[n].Columns[1].transform.localScale = new Vector3(0.4f, 1.0f, 1.0f);
             nodesTable.NodeRow[n].Columns[1].transform.SetParent(contentPanel.transform, false);
 
@@ -1622,8 +1674,9 @@ public class loadGallery : MonoBehaviour
             nodesTable.NodeRow[n].Columns[2].AddComponent<Text>().text = Nodes[n].P2PPort.ToString();
             nodesTable.NodeRow[n].Columns[2].GetComponent<Text>().font = textFont;
             nodesTable.NodeRow[n].Columns[2].GetComponent<Text>().alignment = TextAnchor.MiddleCenter;
+            nodesTable.NodeRow[n].Columns[2].GetComponent<Text>().resizeTextForBestFit = true;
 
-            nodesTable.NodeRow[n].Columns[2].transform.position = new Vector3(StartPos[0] + nodesTable.Size * 2, StartPos[1] + (n + 1) * Spacing[1], 0);
+            nodesTable.NodeRow[n].Columns[2].transform.position = new Vector3(StartPos[0] , StartPos[1] + (n + 1) * Spacing[1], 0);
             nodesTable.NodeRow[n].Columns[2].transform.localScale = new Vector3(0.4f, 1.0f, 1.0f);
             nodesTable.NodeRow[n].Columns[2].transform.SetParent(contentPanel.transform, false);
 
@@ -1632,8 +1685,9 @@ public class loadGallery : MonoBehaviour
             nodesTable.NodeRow[n].Columns[3].AddComponent<Text>().text = Nodes[n].ping.ToString();
             nodesTable.NodeRow[n].Columns[3].GetComponent<Text>().font = textFont;
             nodesTable.NodeRow[n].Columns[3].GetComponent<Text>().alignment = TextAnchor.MiddleCenter;
+            nodesTable.NodeRow[n].Columns[3].GetComponent<Text>().resizeTextForBestFit = true;
 
-            nodesTable.NodeRow[n].Columns[3].transform.position = new Vector3(StartPos[0] + nodesTable.Size * 3, StartPos[1] + (n + 1) * Spacing[1], 0);
+            nodesTable.NodeRow[n].Columns[3].transform.position = new Vector3(StartPos[0] , StartPos[1] + (n + 1) * Spacing[1], 0);
             nodesTable.NodeRow[n].Columns[3].transform.localScale = new Vector3(0.4f, 1.0f, 1.0f);
             nodesTable.NodeRow[n].Columns[3].transform.SetParent(contentPanel.transform, false);
 
@@ -1685,7 +1739,7 @@ public class loadGallery : MonoBehaviour
 
     void WalletMenuClicked() {
 
-        float startY = -30.0f;
+        float startY = 10.0f;
         int nWallets, nContacts;
         string curAddr = galleriesAddress.GetComponentInChildren<InputField>().text;
         bool found;
@@ -1696,6 +1750,9 @@ public class loadGallery : MonoBehaviour
         MenuItems[3].GetComponentInChildren<Renderer>().material = selectedSphereMat;
 
         ClearTabs();
+
+        contentPanel.transform.localPosition = new Vector3(0.0f, 0.0f, 0.0f);
+        indexPanel.transform.localPosition = new Vector3(0.0f, 0.0f, 0.0f);
 
         Headers = new GameObject[2];
 
@@ -2256,11 +2313,12 @@ public class loadGallery : MonoBehaviour
         obj.AddComponent<UnityGLTF.GLTFComponent>().GLTFUri = URL;
         obj.GetComponent<UnityGLTF.GLTFComponent>().Collider = UnityGLTF.GLTFSceneImporter.ColliderType.Box;
         obj.GetComponent<UnityGLTF.GLTFComponent>().Timeout = 120;
-        obj.GetComponent<UnityGLTF.GLTFComponent>().transform.position = new Vector3(0.0f, 2.0f, 0.0f);
 
         obj.AddComponent<BoxCollider>().size = new Vector3(0.5f, 0.5f, 0.5f);
-        obj.AddComponent<Rigidbody>();
+        obj.AddComponent<Rigidbody>().isKinematic = true;
         obj.AddComponent<XRGrabInteractable>();
+
+        obj.layer = 7;
 
         objNode on = new objNode(obj);
 
@@ -2290,6 +2348,7 @@ public class loadGallery : MonoBehaviour
 
         obj.AddComponent<UnityGLTF.GLTFComponent>().GLTFUri = URL;
         obj.GetComponent<UnityGLTF.GLTFComponent>().Timeout = 120;
+        obj.GetComponent<UnityGLTF.GLTFComponent>().Collider = UnityGLTF.GLTFSceneImporter.ColliderType.Box;
 
 
         if (EditRoomWall)
@@ -2306,10 +2365,13 @@ public class loadGallery : MonoBehaviour
 
             var wallObj = GameObject.Find("WallObj");
             currentWallObj.transform.SetParent(wallObj.transform, false);
+
         }
         else
         {
             room.addObj(obj, hash);
+
+            obj.layer = 7;
 
             obj.AddComponent<Rigidbody>();
             obj.AddComponent<XRGrabInteractable>();
@@ -2363,14 +2425,17 @@ public class loadGallery : MonoBehaviour
                 {
                     GalleriesButton = new GameObject[galleries.Length];
 
+                    var panel = GameObject.Find("Panel");
+
                     for (int n = 0; n < galleries.Length; n++)
                     {
                         string galleryHash = galleries[n].objHash;
 
                         GalleriesButton[n] = Instantiate(Resources.Load("ButtonGallery")) as GameObject;
                         GalleriesButton[n].transform.position = new Vector3(StartPos[0] + n * Spacing[0], StartPos[1] + n * Spacing[1], 0);
+                        GalleriesButton[n].transform.localScale= new Vector3(1.0f, 1.0f, 1.0f);
 
-                        GalleriesButton[n].transform.SetParent(contentPanel.transform, false);
+                        GalleriesButton[n].transform.SetParent(indexPanel.transform, false);
 
                         GalleriesButton[n].GetComponentInChildren<Text>().text = galleries[n].name;
                         GalleriesButton[n].name = "gallery " + galleries[n].name;
@@ -2389,7 +2454,7 @@ public class loadGallery : MonoBehaviour
                     emptyResult.GetComponent<Text>().alignment = TextAnchor.MiddleCenter;
 
                     emptyResult.transform.position = new Vector3(ItemsStartPos[0], StartPos[1], 0.0f);
-                    emptyResult.transform.localScale = new Vector3(0.4f, 1.0f, 1.0f);
+                    emptyResult.transform.localScale = new Vector3(1.0f, 1.0f, 1.0f);
 
                     emptyResult.transform.SetParent(contentPanel.transform, false);
                 }
@@ -2403,13 +2468,12 @@ public class loadGallery : MonoBehaviour
     IEnumerator loadRooms()
     {
         string myAddr = galleriesAddress.GetComponentInChildren<InputField>().text;
-        string URL = "http://" + server + baseURL;
-        string ldgal = URL + "/objlst/"+ roomTypeId.ToString() +"/" + myAddr;
+        string URL = "http://" + server + baseURL + "/objlst/" + roomTypeId.ToString() + "/" + myAddr;
 
-        Debug.Log("url " + ldgal);
+        Debug.Log("load Rooms " + URL);
 
 
-        UnityWebRequest webRequest = UnityWebRequest.Get(ldgal);
+        UnityWebRequest webRequest = UnityWebRequest.Get(URL);
 
         // Request and wait for the desired page.
         yield return webRequest.SendWebRequest();
@@ -2460,7 +2524,7 @@ public class loadGallery : MonoBehaviour
 
                         itemX += ItemsSpacing[0];
 
-                        if (itemX >= 2.0f * ItemsSpacing[0])
+                        if (itemX >= 3.0f * ItemsSpacing[0])
                         {
                             itemY += ItemsSpacing[1];
                             itemX = ItemsStartPos[0];
@@ -2564,7 +2628,7 @@ public class loadGallery : MonoBehaviour
                     emptyResult.GetComponent<Text>().alignment = TextAnchor.MiddleCenter;
 
                     emptyResult.transform.position = new Vector3(ItemsStartPos[0], StartPos[1], 0.0f);
-                    emptyResult.transform.localScale = new Vector3(0.4f, 1.0f, 1.0f);
+                    emptyResult.transform.localScale = new Vector3(1.0f, 1.0f, 1.0f);
 
                     emptyResult.transform.SetParent(contentPanel.transform, false);
                 }
@@ -2576,11 +2640,10 @@ public class loadGallery : MonoBehaviour
 
     IEnumerator loadRoom(string hash)
     {
-        string URL = "http://" + server + baseURL;
-        string gu = URL + "/obj/" + hash + "/15";
-        Debug.Log("loading room " + gu);
+        string URL = "http://" + server + baseURL + "/obj/" + hash + "/15";
+        Debug.Log("loading room " + URL);
 
-        UnityWebRequest webRequest = UnityWebRequest.Get(gu);
+        UnityWebRequest webRequest = UnityWebRequest.Get(URL);
 
         // Request and wait for the desired page.
         yield return webRequest.SendWebRequest();
@@ -2650,10 +2713,7 @@ public class loadGallery : MonoBehaviour
         CameraOffset.transform.position = new Vector3(-0, 100.0f, -80.0f);
         CameraOffset.transform.rotation = Quaternion.Euler(new Vector3(45, 0, 0));
 
-        var floorPlane = GameObject.Find("FloorPlane");
-
-        if (floorPlane)
-            floorPlane.SetActive(false);
+        floorPlane.SetActive(false);
     }
 
     void newRoom()
@@ -2700,7 +2760,6 @@ public class loadGallery : MonoBehaviour
         }
         return -1;
     }
-
 
     void computeNewSeg()
     {
@@ -2966,7 +3025,7 @@ public class loadGallery : MonoBehaviour
     }
  
 
-    void createFloor()
+    Vector3 createFloor()
     {
         if (roomFloor != null)
             Destroy(roomFloor);
@@ -3014,10 +3073,9 @@ public class loadGallery : MonoBehaviour
 
         roomFloor.transform.position = new Vector3(0.0f, -1.0f, 0.0f);
 
+        return vertices[0];
+
        
-        var CameraOffset = GameObject.Find("Camera Offset");
-        CameraOffset.transform.position = new Vector3(vertices[0].x, 1.0f , vertices[0].z);
-        CameraOffset.transform.rotation = Quaternion.Euler(new Vector3(-12.0f, 0, 0));
 
 
     }
@@ -3027,11 +3085,21 @@ public class loadGallery : MonoBehaviour
     {
         if (!state)
         {
-            createFloor();
+            Vector3 camPos;
+            if(wallSegments.Count>=2)
+                camPos = createFloor();
+            else
+            {
+               floorPlane.SetActive(true);
+                camPos = new Vector3(0.0f, 1.0f, 0.0f);
+            }
+
+            var CameraOffset = GameObject.Find("Camera Offset");
+            CameraOffset.transform.position = camPos;
+            CameraOffset.transform.rotation = Quaternion.Euler(new Vector3(-12.0f, 0, 0));
 
             Destroy(EditWallPanel);
             ResetGrid();
-
 
             EditRoomWall = false;
 
@@ -3041,7 +3109,6 @@ public class loadGallery : MonoBehaviour
                 XRRayInteractor xrri = rightCont.GetComponent<XRRayInteractor>();
                 xrri.raycastMask = LayerMask.GetMask("Default") | LayerMask.GetMask("Walls") | LayerMask.GetMask("UI");
             }
-                
         }
         else
         {
@@ -3331,13 +3398,36 @@ public class loadGallery : MonoBehaviour
                 }
             }
         }
-
     }
 
-    
+
+ 
+    void closeObjPanel()
+    {
+        if (ObjPannel != null)
+        {
+            ObjPannel.GetComponent<ObjSelection>().Close();
+            Destroy(ObjPannel);
+            ObjPannel = null;
+        }
+    }
+
+    void showObjPannel()
+    {
+        if(ObjPannel == null)
+            ObjPannel = Instantiate(Resources.Load("ObjCanvas")) as GameObject;
+
+        ObjPannel.GetComponent<ObjSelection>().SelectRoomObject = hoverRoomObject;
+        ObjPannel.GetComponent<ObjSelection>().wallet = wallet;
+
+        GameObject.Find("CloseObjPanel").GetComponent<Button>().onClick.AddListener(closeObjPanel);
+    }
+
+    bool flip = false;
+    Quaternion Q1, Q2, QT;
 
 
-    // Update is called once per frame
+        // Update is called once per frame
     void Update()
     {
         if (EditRoomWall)
@@ -3382,17 +3472,76 @@ public class loadGallery : MonoBehaviour
                             canSnap[cc] = true;
                     }
                 }
-
                 lastSnapTime = Time.fixedUnscaledTime;
             }
 
 
-            currentRotation.x += Input.GetAxis("Mouse X") * sensitivity;
-            currentRotation.y -= Input.GetAxis("Mouse Y") * sensitivity;
-            currentRotation.x = Mathf.Repeat(currentRotation.x, 360);
-            currentRotation.y = Mathf.Clamp(currentRotation.y, -maxYAngle, maxYAngle);
-            Cam.transform.rotation = Quaternion.Euler(currentRotation.y, currentRotation.x, 0);
+            GameObject hitObj = null;
+            RaycastHit hit = new RaycastHit();
 
+           
+            if ( ((ObjPannel == null ) || (ObjPannel.GetComponent<ObjSelection>().MoveObj == 0)) && (Input.GetMouseButton(0)))
+            {
+                currentRotation.x += Input.GetAxis("Mouse X") * sensitivity;
+                currentRotation.y -= Input.GetAxis("Mouse Y") * sensitivity;
+                currentRotation.x = Mathf.Repeat(currentRotation.x, 360);
+                currentRotation.y = Mathf.Clamp(currentRotation.y, -maxYAngle, maxYAngle);
+                Cam.transform.rotation = Quaternion.Euler(currentRotation.y, currentRotation.x, 0);
+            }
+
+            if (hasHeadset)
+            {
+                var rightCont = GameObject.Find("RightHand Controller");
+                if (rightCont != null)
+                {
+                    XRRayInteractor xrri = rightCont.GetComponent<XRRayInteractor>();
+                    if (xrri.TryGetCurrent3DRaycastHit(out hit))
+                    {
+                        hitObj = hit.collider.gameObject;
+                    }
+                }
+            }
+            else
+            {
+                Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+
+
+               if (Physics.Raycast(ray, out hit, 1000.0f, LayerMask.GetMask("Objetcs")))
+                {
+                    if (hoverRoomObject == null)
+                    {
+                        hoverRoomObject = hit.collider.gameObject;
+                        hoverRoomObject.AddComponent<Blinker>();
+                    }
+                    else if (hoverRoomObject.GetHashCode() != hit.collider.gameObject.GetHashCode())
+                    {
+                        Destroy(hoverRoomObject.GetComponent<Blinker>());
+
+                        hoverRoomObject = hit.collider.gameObject;
+                        hoverRoomObject.AddComponent<Blinker>();
+                    }
+                    
+                    Debug.Log("hit obj " + hit.collider.gameObject.name);
+
+                    Debug.Log("hit obj scale1 " + hoverRoomObject.transform.localScale.ToString());
+                    Debug.Log("hit obj scale2 " + hoverRoomObject.GetComponentInChildren<MeshFilter>().transform.localScale.ToString());
+
+                }
+                else if (hoverRoomObject != null)
+                {
+                    Destroy(hoverRoomObject.GetComponent<Blinker>());
+                    hoverRoomObject = null;
+                }
+            }
+
+
+            if(Input.GetMouseButtonDown(0))
+            {
+                if (hoverRoomObject != null)
+                {
+                    showObjPannel();
+                }
+            }
 
             Vector3 dir = Cam.transform.rotation * Vector3.forward;
             dir.y = 0.0f;

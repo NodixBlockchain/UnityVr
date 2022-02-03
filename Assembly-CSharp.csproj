@@ -57,11 +57,13 @@
     <Compile Include="Assets\UnityGLTF\Samples\Scripts\MultiSceneComponent.cs" />
     <Compile Include="Assets\UnityGLTF\Samples\Scripts\OrbitCameraController.cs" />
     <Compile Include="Assets\UnityGLTF\Samples\Scripts\SimpleWebServer.cs" />
+    <Compile Include="Assets\Nodes.cs" />
     <Compile Include="Assets\UnityGLTF\Samples\Scripts\GLTFExporterTest.cs" />
     <Compile Include="Assets\UnityGLTF\Samples\Scripts\WebServerComponent.cs" />
     <Compile Include="Assets\loadGallery.cs" />
     <Compile Include="Assets\UnityGLTF\Samples\Scripts\RootMergeComponent.cs" />
     <Compile Include="Assets\UnityGLTF\Samples\Scripts\SampleModelList.cs" />
+    <Compile Include="Assets\ObjSelection.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Assets\TextMesh Pro\Shaders\TMPro.cginc" />
