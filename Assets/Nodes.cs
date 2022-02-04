@@ -151,6 +151,15 @@ public class Node
         }
     }
 
+    public void Disconnect()
+    {
+        if (client != null)
+        {
+            client.Close();
+            client = null;
+        }
+    }
+
 
     private void ConnectCallback(IAsyncResult ar)
     {
@@ -606,7 +615,7 @@ public class Node
 
             if(bytesRead<=0)
             {
-                Debug.Log("ReceiveCallback error ");
+                Debug.Log("ReceiveCallback error "+address);
                 return;
             }
 
@@ -689,15 +698,7 @@ public class Nodes : MonoBehaviour
     {
         for(int n=0;n<NodesList.Count;n++)
         {
-            if((System.DateTimeOffset.Now.ToUnixTimeMilliseconds() - NodesList[n].lastPingTime)>30000)
-            {
-                if(!NodesList[n].waitPong)
-                    NodesList[n].SendPingMessage();
-                else
-                {
-                    Debug.Log("ping timeout");
-                }
-            }
+            
 
             if (!NodesList[n].connected)
             {
@@ -710,9 +711,19 @@ public class Nodes : MonoBehaviour
                     }
                 }
             }
+            else if ((System.DateTimeOffset.Now.ToUnixTimeMilliseconds() - NodesList[n].lastPingTime) > 30000)
+            {
+                if (!NodesList[n].waitPong)
+                    NodesList[n].SendPingMessage();
+                else
+                {
+                    NodesList[n].Disconnect();
+                    NodesList.RemoveAt(n);
+                    Debug.Log("ping timeout");
+                }
+            }
 
-               
-           
+
 
         }
         

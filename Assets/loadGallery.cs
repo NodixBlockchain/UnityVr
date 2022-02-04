@@ -882,8 +882,13 @@ public class loadGallery : MonoBehaviour
         var NewNodeAddr = NodesAdd.transform.Find("NewNodeAddr");
         var NewNodePort = NodesAdd.transform.Find("NewNodePort");
 
-        nodes.addNode(NewNodeAddr.GetComponent<InputField>().text, UInt16.Parse(NewNodePort.GetComponent<InputField>().text));
-        NodesMenuClicked();
+        int port = Int32.Parse(NewNodePort.GetComponent<InputField>().text);
+
+        if ((port > 0)&&(port <= 65535))
+        {
+            nodes.addNode(NewNodeAddr.GetComponent<InputField>().text, (ushort)port);
+            NodesMenuClicked();
+        }
     }
 
     void NodesMenuClicked() {
@@ -947,7 +952,10 @@ public class loadGallery : MonoBehaviour
 
 
             nodesTable.NodeRow[n].Columns[1] = new GameObject();
-            nodesTable.NodeRow[n].Columns[1].AddComponent<Text>().text = nodes.NodesList[n].ip.ToString();
+            if(nodes.NodesList[n].ip !=null)
+                nodesTable.NodeRow[n].Columns[1].AddComponent<Text>().text = nodes.NodesList[n].ip.ToString();
+            else
+                nodesTable.NodeRow[n].Columns[1].AddComponent<Text>().text = "error";
             nodesTable.NodeRow[n].Columns[1].GetComponent<Text>().font = textFont;
             nodesTable.NodeRow[n].Columns[1].GetComponent<Text>().alignment = TextAnchor.MiddleCenter;
             nodesTable.NodeRow[n].Columns[1].GetComponent<Text>().resizeTextForBestFit = true;
