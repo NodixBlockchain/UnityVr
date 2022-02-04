@@ -296,6 +296,7 @@ public class vrRoom : MonoBehaviour
     private GameObject hoverRoomObject = null;
     private GameObject ObjPannel = null;
     private GameObject EditWallPanel = null;
+    private GameObject Loading = null;
 
     private int prevLayerMask = 0;
 
@@ -488,6 +489,8 @@ public class vrRoom : MonoBehaviour
                 wallSegments[nseg].gltfObjs.objs.Add(node);
                 
             }
+
+            Destroy(wallSegments[nseg].wallObj);
         }
 
         createFloor();
@@ -727,44 +730,45 @@ public class vrRoom : MonoBehaviour
         }
     }
 
+    void updateWalls()
+    {
+       for (int n = 0; n < wallSegments.Count; n++)
+       {
+           if (wallSegments[n].gltfObjs == null)
+               continue;
+
+           for (int nn = 0; nn < wallSegments[n].gltfObjs.objs.Count; nn++)
+           {
+               if (wallSegments[n].gltfObjs.objs[nn].loaded == true)
+                   continue;
+
+               var gl = wallSegments[n].gltfObjs.objs[nn].obj.GetComponent<UnityGLTF.GLTFComponent>();
+
+               if (gl.LastLoadedScene == null)
+                   continue;
+
+               if (gl.LastLoadedScene.scene.isLoaded == true)
+               {
+                   var mesh = wallSegments[n].gltfObjs.objs[nn].obj.GetComponentInChildren<MeshFilter>().mesh;
+
+                   wallSegments[n].gltfObjs.objs[nn].obj.transform.position = new Vector3(wallSegments[n].gltfObjs.objs[nn].obj.transform.position.x, -mesh.bounds.min.y * wallHeight, wallSegments[n].gltfObjs.objs[nn].obj.transform.position.z);
+                   wallSegments[n].gltfObjs.objs[nn].loaded = true;
+                   wallSegments[n].defObj.SetActive(false);
+
+                   Debug.Log("Wall loaded " + n + " " + nn);
+               }
+           }
+       }
+    }
+
     void Update()
     {
         bool button = false;
         RaycastHit hit = new RaycastHit();
         GameObject hitObj = null;
 
-        if(wallSegments != null)
-        { 
-
-            for(int n=0; n < wallSegments.Count;n++)
-            {
-                if (wallSegments[n].gltfObjs == null)
-                    continue;
-
-
-                for (int nn = 0; nn < wallSegments[n].gltfObjs.objs.Count; nn++)
-                {
-                    if (wallSegments[n].gltfObjs.objs[nn].loaded == true)
-                        continue;
-
-                    var gl = wallSegments[n].gltfObjs.objs[nn].obj.GetComponent<UnityGLTF.GLTFComponent>();
-
-                    if (gl.LastLoadedScene == null)
-                        continue;
-
-                    if (gl.LastLoadedScene.scene.isLoaded == true)
-                    {
-                        var mesh = wallSegments[n].gltfObjs.objs[nn].obj.GetComponentInChildren<MeshFilter>().mesh;
-
-                        wallSegments[n].gltfObjs.objs[nn].obj.transform.position = new Vector3(wallSegments[n].gltfObjs.objs[nn].obj.transform.position.x, -mesh.bounds.min.y * wallHeight, wallSegments[n].gltfObjs.objs[nn].obj.transform.position.z);
-                        wallSegments[n].gltfObjs.objs[nn].loaded = true;
-                        wallSegments[n].defObj.SetActive(false);
-
-                        Debug.Log("Wall loaded " + n + " " + nn);
-                    }
-                }
-            }
-        }
+        updateWalls();
+        updateLoading();
 
 
         if (EditRoomWall)
@@ -1269,11 +1273,7 @@ public class vrRoom : MonoBehaviour
             uvs[n].x = (vertices[n].x - min.x) / size.x;
             uvs[n].y = (vertices[n].z - min.z) / size.y;
         }
-
-
         return uvs;
-
-
     }
 
 
@@ -1320,7 +1320,6 @@ public class vrRoom : MonoBehaviour
         mesh.triangles = triangles;
 
         roomFloor.name = "Room Floor";
-        roomFloor.name = "Room Floor";
         roomFloor.GetComponent<MeshFilter>().mesh = mesh;
         roomFloor.AddComponent<MeshCollider>().sharedMesh = mesh;
         roomFloor.AddComponent<TeleportationArea>();
@@ -1332,11 +1331,74 @@ public class vrRoom : MonoBehaviour
         return vertices[0];
     }
 
+    public void showLoading()
+    {
+        Loading = Instantiate(Resources.Load("Loading")) as GameObject;
+
+        Loading.GetComponentInChildren<Slider>().minValue = 0;
+        Loading.GetComponentInChildren<Slider>().maxValue = wallSegments.Count + sceneObjects.Count;
+    }
+
+    public void updateLoading()
+    {
+        int total = 0;
+        bool allLoad;
+
+
+        if (Loading == null)
+            return;
+
+        for (int n = 0; n < wallSegments.Count; n++)
+        {
+            if (wallSegments[n].gltfObjs == null)
+            {
+                total++;
+                continue;
+            }
+
+            allLoad = true;
+            for (int nn = 0; nn < wallSegments[n].gltfObjs.objs.Count; nn++)
+            {
+                if (!wallSegments[n].gltfObjs.objs[nn].loaded)
+                {
+                    allLoad = false;
+                    break;
+                }
+            }
+
+            if(allLoad)
+                total++;
+        }
+
+
+        for (int n = 0; n < sceneObjects.Count; n++)
+        {
+            allLoad = true;
+            for (int nn = 0; nn < sceneObjects[n].objs.Count; nn++)
+            {
+                if(sceneObjects[n].objs[nn].obj.GetComponent<UnityGLTF.GLTFComponent>().LastLoadedScene==null)
+                {
+                    allLoad = false;
+                    break;
+                }
+            }
+
+            if (allLoad)
+                total++;
+        }
+        Loading.GetComponentInChildren<Slider>().value = total;
+
+        if(total==(wallSegments.Count + sceneObjects.Count))
+        {
+            Destroy(Loading);
+            Loading=null;
+        }
+            
+    }
 
     public void addObj(GameObject obj, string hash)
     {
         obj.GetComponent<UnityGLTF.GLTFComponent>().transform.position = new Vector3(0.0f, 2.0f, 0.0f);
-        /*obj.AddComponent<BoxCollider>().size = new Vector3(0.5f, 0.5f, 0.5f);*/
 
         objNode on = new objNode(obj);
 

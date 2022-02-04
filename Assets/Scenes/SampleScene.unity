@@ -232,6 +232,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 032d347a063161e4fbbdeb086f88d721, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  seedNodeAdress: nodix.eu
+  seedNodePort: 16819
 --- !u!4 &38116314
 Transform:
   m_ObjectHideFlags: 0
@@ -4128,6 +4130,7 @@ MonoBehaviour:
   defaultSphereMat: {fileID: 2100000, guid: 9515a51a742bbfd428ec790f4fe3ec7e, type: 2}
   selectedSphereMat: {fileID: 2100000, guid: 03fe9a4095b5ac44dbf4c2cd74c0da1d, type: 2}
   SphereEditMat: {fileID: 2100000, guid: 48752f96bd0a6eb4b92b42b8922434d7, type: 2}
+  roomName: 
   wallHeight: 10
   server: 127.0.0.1
   floorPlane: {fileID: 1278510965}
@@ -4266,8 +4269,6 @@ MonoBehaviour:
   roomTypeId: 53
   nodeTypeId: 8
   server: 127.0.0.1
-  seedNodeAdress: nodix.eu
-  seedNodePort: 16819
   address: BPgb5m5HGtNMXrUX9w1a8FfRE1GdGLM8P4
   MenuItems:
   - {fileID: 338045557}
