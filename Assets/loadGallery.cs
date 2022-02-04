@@ -435,7 +435,7 @@ public class Wallet
 
         for(int n=0;n < addresses.Count;n++)
         {
-            Debug.Log("private " + addresses[n]);
+            /*Debug.Log("private " + addresses[n]);*/
 
             if (addresses[n].PrivKey != null)
             {
@@ -458,6 +458,7 @@ public class Wallet
 }
 
 
+/*
 [System.Serializable]
 public class Node
 {
@@ -469,7 +470,7 @@ public class Node
         try
         {
             IPHostEntry Entry = Dns.GetHostEntry(address);
-            ip = Entry.AddressList[0];
+            ip = Entry.AddressList[0].MapToIPv4();
             isSeed = seed;
             P2PPort = port;
             HTTPPort = 80;
@@ -491,7 +492,7 @@ public class Node
     public bool isSeed;
     public int ping;
 }
-
+*/
 
 
 public class NodeTableRow
@@ -637,12 +638,13 @@ public class loadGallery : MonoBehaviour
     private Nodes nodes;
 
 
-    private List<Node> NodesList;
+
     private itemTable nodesTable;
     private itemTable walletTable;
     private GameObject[] Headers;
     private GameObject emptyResult;
     private GameObject roomMenu = null;
+    private GameObject NodesAdd = null;
     private Wallet wallet;
     private GameObject newAddr;
 
@@ -693,10 +695,12 @@ public class loadGallery : MonoBehaviour
         galleriesAddress = GameObject.Find("Address Value");
         galleriesAddress.GetComponentInChildren<InputField>().text = address;
 
+        /*
         Node SeedNode = new Node(nodes.seedNodeAdress, nodes.seedNodePort, true);
 
         NodesList = new List<Node>();
         NodesList.Add(SeedNode);
+        */
 
         nodesTable = new itemTable(new string[] { "adress", "ip", "port", "ping" }, 40.0f);
         walletTable = new itemTable(new string[] { "label", "adress", "owner" }, 65.0f);
@@ -729,6 +733,12 @@ public class loadGallery : MonoBehaviour
         {
             Destroy(roomMenu);
             roomMenu = null;
+        }
+
+        if (NodesAdd != null)
+        {
+            Destroy(NodesAdd);
+            NodesAdd = null;
         }
 
         if (emptyResult != null)
@@ -864,8 +874,17 @@ public class loadGallery : MonoBehaviour
         indexPanel.transform.localPosition = new Vector3(0.0f, 0.0f, 0.0f);
 
         StartCoroutine(loadGalleries());
+
     }
 
+    void addNewNode()
+    {
+        var NewNodeAddr = NodesAdd.transform.Find("NewNodeAddr");
+        var NewNodePort = NodesAdd.transform.Find("NewNodePort");
+
+        nodes.addNode(NewNodeAddr.GetComponent<InputField>().text, UInt16.Parse(NewNodePort.GetComponent<InputField>().text));
+        NodesMenuClicked();
+    }
 
     void NodesMenuClicked() {
         MenuItems[0].GetComponentInChildren<Renderer>().material = defaultSphereMat;
@@ -882,8 +901,17 @@ public class loadGallery : MonoBehaviour
         contentPanel.transform.localPosition = new Vector3(0.0f, 0.0f, 0.0f);
         indexPanel.transform.localPosition = new Vector3(0.0f, 0.0f, 0.0f);
 
-        Headers = new GameObject[nodesTable.Fields.Length];
         var panel = GameObject.Find("Panel");
+
+        NodesAdd = Instantiate(Resources.Load("NodesAdd")) as GameObject;
+
+        NodesAdd.transform.SetParent(panel.transform,false);
+
+        var addNodeButton = NodesAdd.transform.Find("Add Node");
+        addNodeButton.GetComponent<Button>().onClick.AddListener(() => addNewNode());
+
+        Headers = new GameObject[nodesTable.Fields.Length];
+       
 
         for (int n = 0; n < nodesTable.Fields.Length; n++)
         {
@@ -900,15 +928,15 @@ public class loadGallery : MonoBehaviour
 
         }
 
-        nodesTable.NodeRow = new NodeTableRow[NodesList.Count];
+        nodesTable.NodeRow = new NodeTableRow[nodes.NodesList.Count];
 
-        for (int n = 0; n < NodesList.Count; n++)
+        for (int n = 0; n < nodes.NodesList.Count; n++)
         {
             nodesTable.NodeRow[n] = new NodeTableRow();
             nodesTable.NodeRow[n].Columns = new GameObject[nodesTable.Fields.Length];
 
             nodesTable.NodeRow[n].Columns[0] = new GameObject();
-            nodesTable.NodeRow[n].Columns[0].AddComponent<Text>().text = NodesList[n].address;
+            nodesTable.NodeRow[n].Columns[0].AddComponent<Text>().text = nodes.NodesList[n].address;
             nodesTable.NodeRow[n].Columns[0].GetComponent<Text>().font = textFont;
             nodesTable.NodeRow[n].Columns[0].GetComponent<Text>().alignment = TextAnchor.MiddleCenter;
             nodesTable.NodeRow[n].Columns[0].GetComponent<Text>().resizeTextForBestFit = true;
@@ -919,7 +947,7 @@ public class loadGallery : MonoBehaviour
 
 
             nodesTable.NodeRow[n].Columns[1] = new GameObject();
-            nodesTable.NodeRow[n].Columns[1].AddComponent<Text>().text = NodesList[n].ip.ToString();
+            nodesTable.NodeRow[n].Columns[1].AddComponent<Text>().text = nodes.NodesList[n].ip.ToString();
             nodesTable.NodeRow[n].Columns[1].GetComponent<Text>().font = textFont;
             nodesTable.NodeRow[n].Columns[1].GetComponent<Text>().alignment = TextAnchor.MiddleCenter;
             nodesTable.NodeRow[n].Columns[1].GetComponent<Text>().resizeTextForBestFit = true;
@@ -930,7 +958,7 @@ public class loadGallery : MonoBehaviour
 
 
             nodesTable.NodeRow[n].Columns[2] = new GameObject();
-            nodesTable.NodeRow[n].Columns[2].AddComponent<Text>().text = NodesList[n].P2PPort.ToString();
+            nodesTable.NodeRow[n].Columns[2].AddComponent<Text>().text = nodes.NodesList[n].P2PPort.ToString();
             nodesTable.NodeRow[n].Columns[2].GetComponent<Text>().font = textFont;
             nodesTable.NodeRow[n].Columns[2].GetComponent<Text>().alignment = TextAnchor.MiddleCenter;
             nodesTable.NodeRow[n].Columns[2].GetComponent<Text>().resizeTextForBestFit = true;
@@ -941,7 +969,7 @@ public class loadGallery : MonoBehaviour
 
 
             nodesTable.NodeRow[n].Columns[3] = new GameObject();
-            nodesTable.NodeRow[n].Columns[3].AddComponent<Text>().text = NodesList[n].ping.ToString();
+            nodesTable.NodeRow[n].Columns[3].AddComponent<Text>().text = nodes.NodesList[n].pingTime.ToString();
             nodesTable.NodeRow[n].Columns[3].GetComponent<Text>().font = textFont;
             nodesTable.NodeRow[n].Columns[3].GetComponent<Text>().alignment = TextAnchor.MiddleCenter;
             nodesTable.NodeRow[n].Columns[3].GetComponent<Text>().resizeTextForBestFit = true;
