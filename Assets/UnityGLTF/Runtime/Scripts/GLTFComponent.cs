@@ -17,7 +17,8 @@ namespace UnityGLTF
 		public string GLTFUri = null;
 		public bool Multithreaded = true;
 		public bool UseStream = false;
-		public bool AppendStreamingAssets = true;
+        public bool Physic = false;
+        public bool AppendStreamingAssets = true;
 		public bool PlayAnimationOnLoad = true;
         public ImporterFactory Factory = null;
 
@@ -157,11 +158,12 @@ namespace UnityGLTF
 				LastLoadedScene = sceneImporter.LastLoadedScene;
                 rootPubKey = sceneImporter.getRootKey();
           
-                var meshes = sceneImporter.LastLoadedScene.GetComponentsInChildren<MeshFilter>();
+
+                 var meshes = sceneImporter.LastLoadedScene.GetComponentsInChildren<MeshFilter>();
 
                 foreach (MeshFilter mesh in meshes)
                 {
-                    mesh.gameObject.AddComponent<Rigidbody>();
+                    mesh.gameObject.AddComponent<Rigidbody>().isKinematic = (Physic == true) ? false : true;
                 }
 
                 Animations = sceneImporter.LastLoadedScene.GetComponents<Animation>();

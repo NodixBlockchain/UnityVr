@@ -268,15 +268,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   SelectRoomObject: {fileID: 0}
-  wallet:
-    mainKey:
-      Name: 
-      PubAddr: 
-      PrivKey: 
-    addresses: []
   MoveObj: 0
   MoveSpeed: 10
-  RotSpeed: 100
+  RotSpeed: 1000
 --- !u!1 &902025507397438107
 GameObject:
   m_ObjectHideFlags: 0

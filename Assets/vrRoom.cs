@@ -53,10 +53,13 @@ class objNode
     {
         nodeTx = null;
         obj = Obj;
+        obj.SetActive(true);
+        loaded = false;
     }
     public GameObject obj;
     public Transaction nodeTx;
     public Transaction nodePTx;
+    public bool loaded;
 }
 
 class gltfRef
@@ -65,12 +68,12 @@ class gltfRef
     {
         rootHash = Hash;
         objs = new List<objNode>();
+        
     }
 
     public Transaction sceneTx;
     public List<objNode> objs;
     public string rootHash;
-
 }
 
 [System.Serializable]
@@ -119,6 +122,7 @@ class Grid
     public cell[] cells;
     public int w, h;
     public int x, y;
+    float sizeX = 10.0f, sizeY = 10.0f;
 
     public Grid(int X, int Y, int W, int H, Material selectedMat, Material EditMat, Material defaultMat)
     {
@@ -139,7 +143,7 @@ class Grid
                 cells[(ny * w) + nx] = new cell();
                 cells[(ny * w) + nx].obj = GameObject.CreatePrimitive(PrimitiveType.Plane);
                 cells[(ny * w) + nx].obj.name = "Plane " + nx.ToString() + " - " + ny.ToString();
-                cells[(ny * w) + nx].obj.transform.position = new Vector3((nx + x) * 10.0f, 0.0f, (ny + y) * 10.0f);
+                cells[(ny * w) + nx].obj.transform.position = new Vector3((nx + x) * sizeX, 0.0f, (ny + y) * sizeY);
                 cells[(ny * w) + nx].obj.transform.localScale = new Vector3(1.0f, 1.0f, 1.0f);
 
                 cells[(ny * w) + nx].X = nx;
@@ -158,50 +162,70 @@ class Grid
 
         return null;
     }
+
+    public Vector2 CoordToPos(Vector2Int pos)
+    {
+        return new Vector2((pos.x + 0.5f) * sizeX + x, (pos.y + 0.5f) * sizeY + y );
+    }
+
+    public Vector2Int PosToCoord(Vector2 pos)
+    {
+        return new Vector2Int((int)Math.Floor(pos.x / sizeX) - x, (int)Math.Floor(pos.y / sizeY) - y);
+    }
+
+    public cell FindCellByPos(Vector2 pos)
+    {
+        Vector2Int coord = PosToCoord(pos);
+        return cells[w * coord.y + coord.x];
+    }
 }
 
 
 class WallSegment
 {
-    public GameObject defObj;
-    public gltfRef gltfObjs;
-    public cell startCell, endCell;
 
-    public Vector3 getDirection()
+    public GameObject defObj;
+    public GameObject wallObj;
+    public gltfRef gltfObjs;
+    public Vector2 start, end;
+    public Transaction wallTx;
+ 
+
+    public Vector2 getDirection()
     {
-        return new Vector3(this.endCell.obj.transform.position.x - this.startCell.obj.transform.position.x, 0.0f, this.endCell.obj.transform.position.z - this.startCell.obj.transform.position.z);
+        return (end - start);
     }
 
 
     public double getAngle()
     {
         double angle = 0.0;
-        Vector3 dir = getDirection();
+        Vector2 dir = getDirection();
         dir.Normalize();
 
         if (dir.sqrMagnitude > 0.001f)
         {
-            angle = Math.Atan2(dir.x, dir.z);
+            angle = Math.Atan2(dir.x, dir.y);
         }
 
         return angle;
     }
 
 
-    public Vector3[] getArray(float step)
+    public Vector2[] getArray(float step)
     {
-        Vector3 dir = getDirection();
+        Vector2 dir = getDirection();
         float l = dir.magnitude;
         int nstep = (int)Math.Floor(l / step);
-        Vector3[] ret = new Vector3[nstep];
+        Vector2[] ret = new Vector2[nstep];
 
         step = l / nstep;
         dir.Normalize();
-        Vector3 start = new Vector3(startCell.obj.transform.position.x + (dir.x * step / 2.0f), 0.0f, startCell.obj.transform.position.z + (dir.z * step / 2.0f));
+        Vector2 vstart = new Vector2(start.x + (dir.x * step / 2.0f), start.y + (dir.y * step / 2.0f));
 
         for (int n = 0; n < nstep; n++)
         {
-            ret[n] = new Vector3(start.x + n * dir.x * step, 0.0f, start.z + n * dir.z * step);
+            ret[n] = new Vector2(vstart.x + n * dir.x * step, vstart.y + n * dir.y * step);
         }
 
         return ret;
@@ -211,9 +235,9 @@ class WallSegment
     {
 
         this.defObj.SetActive(true);
-        Vector3 delta = getDirection();
+        Vector2 delta = getDirection();
 
-        this.defObj.transform.position = new Vector3(this.startCell.obj.transform.position.x + delta.x / 2.0f, this.startCell.obj.transform.position.y + height / 2.0f, this.startCell.obj.transform.position.z + delta.z / 2.0f);
+        this.defObj.transform.position = new Vector3(start.x + delta.x / 2.0f, height / 2.0f, start.y + delta.y / 2.0f);
         this.defObj.transform.localScale = new Vector3(4.0f, height, delta.magnitude);
 
         delta.Normalize();
@@ -221,7 +245,7 @@ class WallSegment
         {
             double langle;
 
-            langle = Math.Atan2(delta.x, delta.z);
+            langle = Math.Atan2(delta.x, delta.y);
 
             this.defObj.transform.rotation = Quaternion.Euler(0.0f, (float)(langle * 180.0f / Math.PI), 0.0f);
         }
@@ -235,10 +259,13 @@ public class vrRoom : MonoBehaviour
     public Material defaultSphereMat;
     public Material selectedSphereMat;
     public Material SphereEditMat;
+    public string roomName;
 
     public float wallHeight = 10.0f;
     public string server;
     public GameObject floorPlane;
+    public GameObject mainPanel;
+
 
     private ECDomainParameters domainParams;
 
@@ -249,7 +276,7 @@ public class vrRoom : MonoBehaviour
     private Grid grid;
 
     private string baseURL = "/app/UnityApp";
-    private string roomName;
+    
 
     private List<WallSegment> wallSegments;
     private List<gltfRef> sceneObjects;
@@ -279,6 +306,8 @@ public class vrRoom : MonoBehaviour
     private bool lastTrigger = false;
     private bool hasHeadset = false;
 
+    private Vector3 origPos ;
+
     private XRRayInteractor RightInteractor;
 
     void Start()
@@ -287,6 +316,8 @@ public class vrRoom : MonoBehaviour
         sceneObjects = new List<gltfRef>();
 
         hasHeadset = hasHMD();
+
+        this.wallSegments = new List<WallSegment>();
 
         var rightCont = GameObject.Find("RightHand Controller");
         if(rightCont != null)
@@ -303,7 +334,7 @@ public class vrRoom : MonoBehaviour
 
     }
 
-    void resetRoom()
+    public void resetRoom()
     {
         for (int n = 0; n < this.sceneObjects.Count; n++)
         {
@@ -349,7 +380,7 @@ public class vrRoom : MonoBehaviour
         return true;
     }
 
-    void roomEditor()
+    public void roomEditor()
     {
         grid = new Grid(-10, -10, 20, 20, selectedSphereMat, SphereEditMat, defaultSphereMat);
 
@@ -362,11 +393,25 @@ public class vrRoom : MonoBehaviour
         EditRoomWall = true;
 
         var CameraOffset = GameObject.Find("Camera Offset");
+
+        origPos = new Vector3(CameraOffset.transform.position.x, CameraOffset.transform.position.y, CameraOffset.transform.position.z);
+
+       
         CameraOffset.transform.position = new Vector3(-0, 100.0f, -80.0f);
         CameraOffset.transform.rotation = Quaternion.Euler(new Vector3(45, 0, 0));
-
         
         floorPlane.SetActive(false);
+
+        if(roomFloor != null)
+        {
+            Destroy(roomFloor);
+            roomFloor = null;
+        }
+    }
+
+    public void setName(string name)
+    {
+        this.roomName = name;
     }
 
     public void newRoom()
@@ -376,6 +421,78 @@ public class vrRoom : MonoBehaviour
 
         resetRoom();
         roomEditor();
+    }
+
+    public void newWallSeg(Vector2 start, string hash)
+    {
+        string URL = "http://" + server + baseURL + "/obj/" + hash;
+
+        if (wallSegments.Count>0)
+        {
+            wallSegments[wallSegments.Count-1].end = new Vector2(start.x, start.y);
+        }
+
+        WallSegment newSeg=new WallSegment();
+
+        newSeg.wallObj = new GameObject("Wall " + hash);
+
+        Debug.Log("load wall seg " + URL);
+
+        newSeg.wallObj.AddComponent<UnityGLTF.GLTFComponent>().GLTFUri = URL;
+        newSeg.wallObj.GetComponent<UnityGLTF.GLTFComponent>().Timeout = 120;
+        newSeg.wallObj.GetComponent<UnityGLTF.GLTFComponent>().Collider = UnityGLTF.GLTFSceneImporter.ColliderType.Box;
+        newSeg.wallObj.SetActive(false);
+
+        newSeg.defObj = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        newSeg.defObj.GetComponentInChildren<Renderer>().material = wallSegMat;
+        newSeg.defObj.layer = 6;
+        newSeg.defObj.transform.SetParent(this.transform, false);
+        newSeg.defObj.name = "Wall " + wallSegments.Count;
+
+
+        newSeg.start = new Vector2(start.x, start.y);
+        newSeg.gltfObjs = new gltfRef(hash);
+        wallSegments.Add(newSeg);
+    }
+
+    public void buildWalls()
+    {
+        if (wallSegments.Count < 1)
+            return;
+
+        wallSegments[wallSegments.Count - 1].end = wallSegments[0].start;
+
+        for(int nseg = 0; nseg< wallSegments.Count;nseg ++)
+        { 
+            Vector2[] pos = wallSegments[nseg].getArray(10.0f);
+            Vector2 delta = wallSegments[nseg].getDirection();
+            double angle = wallSegments[nseg].getAngle();
+            float scaleZ = delta.magnitude / (10.0f * pos.Length);
+
+            wallSegments[nseg].defObj.transform.position = new Vector3(wallSegments[nseg].start.x + delta.x / 2.0f, wallHeight / 2.0f, wallSegments[nseg].start.y + delta.y / 2.0f);
+            wallSegments[nseg].defObj.transform.localScale = new Vector3(4.0f, wallHeight, delta.magnitude);
+            wallSegments[nseg].defObj.transform.rotation = Quaternion.Euler(0.0f, (float)(angle * 180.0f / Math.PI), 0.0f);
+
+            for (int n = 0; n < pos.Length; n++)
+            {
+                objNode node = new objNode(GameObject.Instantiate<GameObject>(wallSegments[nseg].wallObj));
+
+
+                node.obj.transform.SetParent(this.transform, false);
+
+                node.obj.transform.position = new Vector3(pos[n].x, wallHeight / 2.0f, pos[n].y);
+                node.obj.transform.localScale = new Vector3(10.0f * scaleZ, wallHeight, 10.0f);
+                node.obj.transform.rotation = Quaternion.Euler(new Vector3(0, (float)((angle * 180.0) / Math.PI) + 90.0f, 0));
+
+
+                wallSegments[nseg].gltfObjs.objs.Add(node);
+                
+            }
+        }
+
+        createFloor();
+
+        floorPlane.SetActive(false);
     }
 
     public void loadScene(string hash)
@@ -389,6 +506,7 @@ public class vrRoom : MonoBehaviour
         obj.AddComponent<UnityGLTF.GLTFComponent>().GLTFUri = URL;
         obj.GetComponent<UnityGLTF.GLTFComponent>().Collider = UnityGLTF.GLTFSceneImporter.ColliderType.Box;
         obj.GetComponent<UnityGLTF.GLTFComponent>().Timeout = 120;
+        obj.transform.SetParent(this.transform, false);
 
         //obj.AddComponent<BoxCollider>();
         /*obj.AddComponent<Rigidbody>().isKinematic = true;*/
@@ -424,8 +542,7 @@ public class vrRoom : MonoBehaviour
         obj.AddComponent<UnityGLTF.GLTFComponent>().GLTFUri = URL;
         obj.GetComponent<UnityGLTF.GLTFComponent>().Timeout = 120;
         obj.GetComponent<UnityGLTF.GLTFComponent>().Collider = UnityGLTF.GLTFSceneImporter.ColliderType.Box;
-        //obj.AddComponent<BoxCollider>();
-
+        obj.transform.SetParent(this.transform, false);
 
 
         if (EditRoomWall)
@@ -462,21 +579,13 @@ public class vrRoom : MonoBehaviour
     {
         if (!state)
         {
-            Vector3 camPos;
             if (this.wallSegments.Count >= 2)
-            {
-                camPos = this.createFloor();
-                camPos.y = 1.0f;
-            }
+                this.createFloor();
             else
-            {
-                
                 floorPlane.SetActive(true);
-                camPos = new Vector3(0.0f, 1.0f, -10.0f);
-            }
 
             var CameraOffset = GameObject.Find("Camera Offset");
-            CameraOffset.transform.position = camPos;
+            CameraOffset.transform.position = origPos;
             CameraOffset.transform.rotation = Quaternion.Euler(new Vector3(-12.0f, 0, 0));
 
             Destroy(EditWallPanel);
@@ -492,14 +601,7 @@ public class vrRoom : MonoBehaviour
                 RightInteractor.raycastMask = LayerMask.GetMask("Default") | LayerMask.GetMask("Walls") | LayerMask.GetMask("UI") | LayerMask.GetMask("Objects");
             }
         }
-        else
-        {
-            var CameraOffset = GameObject.Find("Camera Offset");
-            CameraOffset.transform.position = new Vector3(-0, 100.0f, -80.0f);
-            CameraOffset.transform.rotation = Quaternion.Euler(new Vector3(45, 0, 0));
-
-            GameObject.Find("ToggleWall").GetComponent<Toggle>().enabled = true;
-        }
+      
     }
 
 
@@ -550,6 +652,8 @@ public class vrRoom : MonoBehaviour
             Destroy(ObjPannel);
             ObjPannel = null;
         }
+
+        SetLayerRecursively(mainPanel, true);
     }
 
     void showObjPannel()
@@ -561,6 +665,8 @@ public class vrRoom : MonoBehaviour
         ObjPannel.GetComponent<ObjSelection>().domainParams = domainParams;
 
         GameObject.Find("CloseObjPanel").GetComponent<Button>().onClick.AddListener(closeObjPanel);
+
+        SetLayerRecursively(mainPanel, false);
     }
 
     void EnableCreateWalls()
@@ -568,7 +674,7 @@ public class vrRoom : MonoBehaviour
         this.removeLastWall();
 
         if (this.wallSegments.Count > 0)
-            selectedCell = this.wallSegments[this.wallSegments.Count - 1].endCell;
+            selectedCell = grid.FindCellByPos(this.wallSegments[this.wallSegments.Count - 1].end);
 
         CreateWalls = true;
         outScope = false;
@@ -600,14 +706,66 @@ public class vrRoom : MonoBehaviour
             return false;
     }
 
+
+    void SetLayerRecursively(GameObject obj, bool on)
+    {
+        if (null == obj)
+        {
+            return;
+        }
+
+        if (obj.GetComponent<Button>())
+            obj.GetComponent<Button>().interactable = on;
+
+        foreach (Transform child in obj.transform)
+        {
+            if (null == child)
+            {
+                continue;
+            }
+            SetLayerRecursively(child.gameObject, on);
+        }
+    }
+
     void Update()
     {
         bool button = false;
-
         RaycastHit hit = new RaycastHit();
         GameObject hitObj = null;
 
-      
+        if(wallSegments != null)
+        { 
+
+            for(int n=0; n < wallSegments.Count;n++)
+            {
+                if (wallSegments[n].gltfObjs == null)
+                    continue;
+
+
+                for (int nn = 0; nn < wallSegments[n].gltfObjs.objs.Count; nn++)
+                {
+                    if (wallSegments[n].gltfObjs.objs[nn].loaded == true)
+                        continue;
+
+                    var gl = wallSegments[n].gltfObjs.objs[nn].obj.GetComponent<UnityGLTF.GLTFComponent>();
+
+                    if (gl.LastLoadedScene == null)
+                        continue;
+
+                    if (gl.LastLoadedScene.scene.isLoaded == true)
+                    {
+                        var mesh = wallSegments[n].gltfObjs.objs[nn].obj.GetComponentInChildren<MeshFilter>().mesh;
+
+                        wallSegments[n].gltfObjs.objs[nn].obj.transform.position = new Vector3(wallSegments[n].gltfObjs.objs[nn].obj.transform.position.x, -mesh.bounds.min.y * wallHeight, wallSegments[n].gltfObjs.objs[nn].obj.transform.position.z);
+                        wallSegments[n].gltfObjs.objs[nn].loaded = true;
+                        wallSegments[n].defObj.SetActive(false);
+
+                        Debug.Log("Wall loaded " + n + " " + nn);
+                    }
+                }
+            }
+        }
+
 
         if (EditRoomWall)
         {
@@ -646,8 +804,8 @@ public class vrRoom : MonoBehaviour
                             WallSegment seg = new WallSegment();
 
                             seg.defObj = currentSeg;
-                            seg.startCell = selectedCell;
-                            seg.endCell = hoveredCell;
+                            seg.start = new Vector2(selectedCell.obj.transform.position.x, selectedCell.obj.transform.position.z);
+                            seg.end = new Vector2(hoveredCell.obj.transform.position.x, hoveredCell.obj.transform.position.z);
 
                             seg.defObj.name = "Wall " + wallSegments.Count;
 
@@ -685,7 +843,7 @@ public class vrRoom : MonoBehaviour
                         if (hitObj != null)
                         {
                             int segNum = Int32.Parse(hitObj.name.Substring(5));
-                            Vector3[] pos = wallSegments[segNum].getArray(10.0f);
+                            Vector2[] pos = wallSegments[segNum].getArray(10.0f);
                             double angle = wallSegments[segNum].getAngle();
 
                             float scaleZ = wallSegments[segNum].getDirection().magnitude / (10.0f * pos.Length);
@@ -697,13 +855,14 @@ public class vrRoom : MonoBehaviour
                                 objNode node = new objNode(GameObject.Instantiate<GameObject>(currentWallObj));
                                 var mesh = currentWallObj.GetComponentInChildren<MeshFilter>().mesh;
 
-                                node.obj.transform.position = new Vector3(pos[n].x, -mesh.bounds.min.y, pos[n].z);
-                                node.obj.transform.localScale = new Vector3(10.0f * scaleZ, 10.0f, 10.0f);
+                                node.obj.transform.position = new Vector3(pos[n].x, -mesh.bounds.min.y* wallHeight,  pos[n].y);
+                                node.obj.transform.localScale = new Vector3(10.0f * scaleZ, wallHeight, 10.0f);
                                 node.obj.transform.rotation = Quaternion.Euler(new Vector3(0, (float)((angle * 180.0) / Math.PI) + 90.0f, 0));
 
-                                node.obj.AddComponent<BoxCollider>().size = mesh.bounds.size;
+                                /*node.obj.AddComponent<BoxCollider>().size = mesh.bounds.size;*/
 
                                 wallSegments[segNum].gltfObjs.objs.Add(node);
+                                node.loaded = true;
                             }
 
                             wallSegments[segNum].defObj.SetActive(false);
@@ -850,41 +1009,11 @@ public class vrRoom : MonoBehaviour
                         }
                     }
                 }
-
                 if ((!hasHit) &&(hoverRoomObject != null))
                 {
                     Destroy(hoverRoomObject.GetComponent<Blinker>());
                     hoverRoomObject = null;
                 }
-
-                /*
-                if (Physics.Raycast(ray, out hit, 1000.0f, LayerMask.GetMask("Objetcs")))
-                {
-                    if (hoverRoomObject == null)
-                    {
-                        hoverRoomObject = hit.collider.gameObject;
-                        hoverRoomObject.AddComponent<Blinker>();
-                    }
-                    else if (hoverRoomObject.GetHashCode() != hit.collider.gameObject.GetHashCode())
-                    {
-                        Destroy(hoverRoomObject.GetComponent<Blinker>());
-
-                        hoverRoomObject = hit.collider.gameObject;
-                        hoverRoomObject.AddComponent<Blinker>();
-                    }
-
-                    Debug.Log("hit obj " + hit.collider.gameObject.name);
-
-                    Debug.Log("hit obj scale1 " + hoverRoomObject.transform.localScale.ToString());
-                    Debug.Log("hit obj scale2 " + hoverRoomObject.GetComponentInChildren<MeshFilter>().transform.localScale.ToString());
-
-                }
-                else if (hoverRoomObject != null)
-                {
-                    Destroy(hoverRoomObject.GetComponent<Blinker>());
-                    hoverRoomObject = null;
-                }
-                */
             }
 
             if (Input.GetMouseButtonDown(0))
@@ -892,6 +1021,7 @@ public class vrRoom : MonoBehaviour
                 if (hoverRoomObject != null)
                 {
                     showObjPannel();
+                    
                 }
             }
         }
@@ -902,9 +1032,8 @@ public class vrRoom : MonoBehaviour
     {
         for (int n = 0; n < wallSegments.Count; n++)
         {
-            WallSegment mySeg = wallSegments[n];
-
-            if ((mySeg.startCell.X == x) && (mySeg.startCell.Y == y))
+            Vector2Int coord = grid.PosToCoord(wallSegments[n].start);
+            if ((coord.x == x) && (coord.y == y))
             {
                 return n;
             }
@@ -918,6 +1047,7 @@ public class vrRoom : MonoBehaviour
         {
             currentSeg = GameObject.CreatePrimitive(PrimitiveType.Cube);
             currentSeg.GetComponentInChildren<Renderer>().material = wallSegMat;
+            currentSeg.transform.SetParent(this.transform, false);
 
             currentSeg.layer = 6;
         }
@@ -928,10 +1058,11 @@ public class vrRoom : MonoBehaviour
             {
                 lastSeg = GameObject.CreatePrimitive(PrimitiveType.Cube);
                 lastSeg.GetComponentInChildren<Renderer>().material = wallSegMat;
+                lastSeg.transform.SetParent(this.transform, false);
                 lastSeg.layer = 6;
             }
 
-            Vector3 ldelta = new Vector3(wallSegments[0].startCell.obj.transform.position.x - hoveredCell.obj.transform.position.x, 0.0f, wallSegments[0].startCell.obj.transform.position.z - hoveredCell.obj.transform.position.z);
+            Vector3 ldelta = new Vector3(wallSegments[0].start.x - hoveredCell.obj.transform.position.x, 0.0f, wallSegments[0].start.y - hoveredCell.obj.transform.position.z);
 
             lastSeg.transform.position = new Vector3(hoveredCell.obj.transform.position.x + ldelta.x / 2.0f,  wallHeight / 2.0f, hoveredCell.obj.transform.position.z + ldelta.z / 2.0f);
             lastSeg.transform.localScale = new Vector3(4.0f, wallHeight, ldelta.magnitude);
@@ -977,8 +1108,8 @@ public class vrRoom : MonoBehaviour
             seg2 = n - 1;
         }
 
-        wallSegments[seg1].startCell = hoveredCell;
-        wallSegments[seg2].endCell = hoveredCell;
+        wallSegments[seg1].start = new Vector2(hoveredCell.obj.transform.position.x, hoveredCell.obj.transform.position.z);
+        wallSegments[seg2].end = new Vector2(hoveredCell.obj.transform.position.x, hoveredCell.obj.transform.position.z); 
 
 
         if (wallSegments[seg1].gltfObjs != null)
@@ -1010,11 +1141,12 @@ public class vrRoom : MonoBehaviour
         {
             var newSegObj = GameObject.CreatePrimitive(PrimitiveType.Cube);
             newSegObj.GetComponentInChildren<Renderer>().material = wallSegMat;
+            newSegObj.transform.SetParent(this.transform, false);
             newSegObj.layer = 6;
 
-            Vector3 ldelta = new Vector3(wallSegments[0].startCell.obj.transform.position.x - wallSegments[wallSegments.Count - 1].endCell.obj.transform.position.x, 0.0f, wallSegments[0].startCell.obj.transform.position.z - wallSegments[wallSegments.Count - 1].endCell.obj.transform.position.z);
+            Vector3 ldelta = new Vector3(wallSegments[0].start.x - wallSegments[wallSegments.Count - 1].end.x, 0.0f, wallSegments[0].start.y - wallSegments[wallSegments.Count - 1].end.y);
 
-            newSegObj.transform.position = new Vector3(wallSegments[wallSegments.Count - 1].endCell.obj.transform.position.x + ldelta.x / 2.0f,  wallHeight / 2.0f, wallSegments[wallSegments.Count - 1].endCell.obj.transform.position.z + ldelta.z / 2.0f);
+            newSegObj.transform.position = new Vector3(wallSegments[wallSegments.Count - 1].end.x + ldelta.x / 2.0f,  wallHeight / 2.0f, wallSegments[wallSegments.Count - 1].end.y + ldelta.z / 2.0f);
             newSegObj.transform.localScale = new Vector3(4.0f, wallHeight, ldelta.magnitude);
 
             ldelta.Normalize();
@@ -1028,8 +1160,8 @@ public class vrRoom : MonoBehaviour
             WallSegment seg = new WallSegment();
 
             seg.defObj = newSegObj;
-            seg.startCell = wallSegments[wallSegments.Count - 1].endCell;
-            seg.endCell = wallSegments[0].startCell;
+            seg.start = wallSegments[wallSegments.Count - 1].end;
+            seg.end = wallSegments[0].start;
 
             seg.defObj.name = "Wall " + wallSegments.Count;
 
@@ -1066,35 +1198,30 @@ public class vrRoom : MonoBehaviour
     }
 
 
-    Vector3 findWallCenter()
+    Vector2 findWallCenter()
     {
-        Vector3 center;
-        Vector3 min, max;
+        Vector2 center;
+        Vector2 min, max;
 
         if (wallSegments.Count < 2)
-            return new Vector3(0.0f, 0.0f, 0.0f);
+            return new Vector2(0.0f, 0.0f);
 
-        min = wallSegments[0].startCell.obj.transform.position;
-        max = wallSegments[0].startCell.obj.transform.position;
+        min = wallSegments[0].start;
+        max = wallSegments[0].start;
         for (int n = 1; n < wallSegments.Count; n++)
         {
-            if (wallSegments[n].startCell.obj.transform.position.x < min.x)
-                min.x = wallSegments[n].startCell.obj.transform.position.x;
+            if (wallSegments[n].start.x < min.x)
+                min.x = wallSegments[n].start.x;
 
-            if (wallSegments[n].startCell.obj.transform.position.y < min.y)
-                min.y = wallSegments[n].startCell.obj.transform.position.y;
+            if (wallSegments[n].start.y < min.y)
+                min.y = wallSegments[n].start.y;
 
-            if (wallSegments[n].startCell.obj.transform.position.z < min.z)
-                min.z = wallSegments[n].startCell.obj.transform.position.z;
+            if (wallSegments[n].start.x > max.x)
+                max.x = wallSegments[n].start.x;
 
-            if (wallSegments[n].startCell.obj.transform.position.x > max.x)
-                max.x = wallSegments[n].startCell.obj.transform.position.x;
+            if (wallSegments[n].start.y > max.y)
+                max.y = wallSegments[n].start.y;
 
-            if (wallSegments[n].startCell.obj.transform.position.y > max.y)
-                max.y = wallSegments[n].startCell.obj.transform.position.y;
-
-            if (wallSegments[n].startCell.obj.transform.position.z > max.z)
-                max.z = wallSegments[n].startCell.obj.transform.position.z;
         }
 
         center = min + (max - min) / 2.0f;
@@ -1170,7 +1297,7 @@ public class vrRoom : MonoBehaviour
 
         for (int n = 0; n < wallSegments.Count; n++)
         {
-            vertices[n + 1] = new Vector3(wallSegments[n].startCell.obj.transform.position.x, 0.0f, wallSegments[n].startCell.obj.transform.position.z);
+            vertices[n + 1] = new Vector3(wallSegments[n].start.x, 0.0f, wallSegments[n].start.y);
             normals[n + 1] = new Vector3(0.0f, 1.0f, 0.0f);
         }
 
@@ -1192,11 +1319,15 @@ public class vrRoom : MonoBehaviour
         mesh.normals = normals;
         mesh.triangles = triangles;
 
+        roomFloor.name = "Room Floor";
+        roomFloor.name = "Room Floor";
         roomFloor.GetComponent<MeshFilter>().mesh = mesh;
         roomFloor.AddComponent<MeshCollider>().sharedMesh = mesh;
         roomFloor.AddComponent<TeleportationArea>();
 
         roomFloor.transform.position = new Vector3(0.0f, 0.0f, 0.0f);
+
+        roomFloor.transform.SetParent(this.transform,false);
 
         return vertices[0];
     }
@@ -1393,11 +1524,12 @@ public class vrRoom : MonoBehaviour
         for (int n = 0; n < gltfref.objs.Count; n++)
         {
             GameObject obj = gltfref.objs[n].obj;
+            var mesh = obj.GetComponentInChildren<MeshFilter>();
 
-            Quaternion TotalQ = obj.transform.localRotation * obj.GetComponentInChildren<MeshFilter>().transform.localRotation;
+            Quaternion TotalQ = obj.transform.localRotation * mesh.transform.localRotation;
             GLTF.Math.Quaternion myQ = TotalQ.ToGltfQuaternionConvert();
-            Vector3 mP = new Vector3(obj.transform.position.x * SchemaExtensions.CoordinateSpaceConversionScale.X, obj.transform.position.y * SchemaExtensions.CoordinateSpaceConversionScale.Y, obj.transform.position.z * SchemaExtensions.CoordinateSpaceConversionScale.Z);
-            Vector3 Scale = obj.GetComponentInChildren<MeshFilter>().transform.localScale;
+            Vector3 mP = new Vector3(mesh.transform.position.x * SchemaExtensions.CoordinateSpaceConversionScale.X, mesh.transform.position.y * SchemaExtensions.CoordinateSpaceConversionScale.Y, mesh.transform.position.z * SchemaExtensions.CoordinateSpaceConversionScale.Z);
+            Vector3 Scale = mesh.transform.localScale;
 
             var nodeJson = "{name: \"node " + n.ToString() + "\", ";
             nodeJson += "translation: [" + mP[0].ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + mP[1].ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + mP[2].ToString(System.Globalization.CultureInfo.InvariantCulture) + "], ";
@@ -1538,6 +1670,137 @@ public class vrRoom : MonoBehaviour
         StartCoroutine(SubmitSceneTx(gltfref));
     }
 
+
+    IEnumerator SubmitWallTx(WallSegment seg)
+    {
+        string URL = "http://" + this.server + "/jsonrpc";
+        string submittx = "{id:1 , jsonrpc: \"2.0\", method:\"submittx\", params : [\"" + seg.wallTx.txid + "\"]}";
+        UnityWebRequest webRequest = UnityWebRequest.Put(URL, submittx);
+        webRequest.SetRequestHeader("Content-Type", "application/json");
+        // Request and wait for the desired page.
+        yield return webRequest.SendWebRequest();
+
+        switch (webRequest.result)
+        {
+            case UnityWebRequest.Result.ConnectionError:
+            case UnityWebRequest.Result.DataProcessingError:
+                Debug.Log("SubmitWallTx  " + submittx + " : Error: " + webRequest.error);
+                break;
+            case UnityWebRequest.Result.ProtocolError:
+                Debug.Log("SubmitWallTx  " + submittx + " : HTTP Error: " + webRequest.error);
+                break;
+            case UnityWebRequest.Result.Success:
+                Debug.Log("SubmitWallTx signtxinput" + submittx + " : \nReceived: " + webRequest.downloadHandler.text);
+                break;
+        }
+    }
+
+    IEnumerator addRoomSceneWall(WallSegment Seg)
+    {
+        Seg.wallTx.issigned = true;
+
+
+        string URL = "http://" + this.server + "/jsonrpc";
+
+        string addchild = "{id:1 , jsonrpc: \"2.0\", method:\"addchildobj\", params : [\"" + saveInfos.appName + "\",\"" + this.roomTx.txid + "\",\"walls\",\"" + Seg.wallTx.txid + "\"]}";
+        UnityWebRequest webRequest = UnityWebRequest.Put(URL, addchild);
+        webRequest.SetRequestHeader("Content-Type", "application/json");
+
+        // Request and wait for the desired page.
+        yield return webRequest.SendWebRequest();
+        switch (webRequest.result)
+        {
+            case UnityWebRequest.Result.ConnectionError:
+            case UnityWebRequest.Result.DataProcessingError:
+                Debug.Log("addRoomSceneWall  " + addchild + " : Error: " + webRequest.error);
+                break;
+            case UnityWebRequest.Result.ProtocolError:
+                Debug.Log("addRoomSceneWall  " + addchild + " : HTTP Error: " + webRequest.error);
+                break;
+            case UnityWebRequest.Result.Success:
+
+                Debug.Log("addRoomSceneWall " + addchild + " : \nReceived: " + webRequest.downloadHandler.text);
+                Transaction myTransaction = JsonUtility.FromJson<RPCTransaction>(webRequest.downloadHandler.text).result.transaction;
+                Debug.Log("addRoomSceneWall myTransaction " + myTransaction.txid + " " + this.roomTx.txid);
+                myTransaction.issigned = false;
+                StartCoroutine(signTxInputs(myTransaction));
+
+                break;
+        }
+    }
+
+
+    IEnumerator signWallTxInputs(WallSegment seg)
+    {
+        string URL = "http://" + this.server + "/jsonrpc";
+
+        for (int n = 0; n < seg.wallTx.txsin.Count; n++)
+        {
+            byte[] derSign = this.saveInfos.mainKey.Sign(Org.BouncyCastle.Utilities.Encoders.Hex.Decode(seg.wallTx.txsin[n].signHash), this.domainParams);
+            string signtx = "{id:1 , jsonrpc: \"2.0\", method: \"signtxinput\", params : [\"" + seg.wallTx.txid + "\"," + n.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(derSign) + "\",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(this.saveInfos.mainKey.getPub().Q.GetEncoded(true)) + "\"]}";
+            UnityWebRequest webRequest = UnityWebRequest.Put(URL, signtx);
+            webRequest.SetRequestHeader("Content-Type", "application/json");
+            // Request and wait for the desired page.
+            yield return webRequest.SendWebRequest();
+
+            switch (webRequest.result)
+            {
+                case UnityWebRequest.Result.ConnectionError:
+                case UnityWebRequest.Result.DataProcessingError:
+                    Debug.Log("signWallTxInputs  " + signtx + " : Error: " + webRequest.error);
+                    break;
+                case UnityWebRequest.Result.ProtocolError:
+                    Debug.Log("signWallTxInputs  " + signtx + " : HTTP Error: " + webRequest.error);
+                    break;
+                case UnityWebRequest.Result.Success:
+                    Debug.Log("signWallTxInputs signtxinput" + signtx + " : \nReceived: " + webRequest.downloadHandler.text);
+                    seg.wallTx.txid = JsonUtility.FromJson<RPCSign>(webRequest.downloadHandler.text).result.txid;
+                    Debug.Log("signWallTxInputs signtxinput" + seg.wallTx.txid);
+                    break;
+            }
+        }
+        StartCoroutine(addRoomSceneWall(seg));
+
+        StartCoroutine(SubmitWallTx(seg));
+    }
+
+
+    IEnumerator makewalls()
+    {
+        for (int n = 0; n < this.wallSegments.Count; n++)
+        {
+            string URL = "http://" + this.server + "/jsonrpc";
+            string wallJSon = "{start : [" + this.wallSegments[n].start.x.ToString() + "," + this.wallSegments[n].start.y.ToString() + "], objHash : \"" + this.wallSegments[n].gltfObjs.rootHash + "\" }";
+            string makeappwall = "{id:1 , jsonrpc: \"2.0\", method: \"makeappobjtx\", params : [\"" + saveInfos.appName + "\"," + saveInfos.wallTypeId.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(this.saveInfos.mainKey.getPub().Q.GetEncoded(true)) + "\"," + wallJSon + "]}";
+
+            Debug.Log("makewall  " + URL + "  " + makeappwall);
+
+            UnityWebRequest scenewebRequest = UnityWebRequest.Put(URL, makeappwall);
+            scenewebRequest.SetRequestHeader("Content-Type", "application/json");
+            // Request and wait for the desired page.
+            yield return scenewebRequest.SendWebRequest();
+
+            switch (scenewebRequest.result)
+            {
+                case UnityWebRequest.Result.ConnectionError:
+                case UnityWebRequest.Result.DataProcessingError:
+                    Debug.Log("makewall  " + makeappwall + " : Error: " + scenewebRequest.error);
+                    break;
+                case UnityWebRequest.Result.ProtocolError:
+                    Debug.Log("makewall  " + makeappwall + " : HTTP Error: " + scenewebRequest.error);
+                    break;
+                case UnityWebRequest.Result.Success:
+
+                    Debug.Log("makewall " + makeappwall + " : \nReceived: " + scenewebRequest.downloadHandler.text);
+                    this.wallSegments[n].wallTx = JsonUtility.FromJson<RPCTransaction>(scenewebRequest.downloadHandler.text).result.transaction;
+                    this.wallSegments[n].wallTx.issigned = false;
+                    Debug.Log("makeobj myTransaction" + this.wallSegments[n].wallTx.txid + " " + this.wallSegments[n].wallTx.txsin.Count);
+                    StartCoroutine(signWallTxInputs(this.wallSegments[n]));
+                    break;
+            }
+        }
+    }
+
     IEnumerator makeobjs()
     {
         string URL = "http://" + this.server + "/jsonrpc";
@@ -1597,6 +1860,7 @@ public class vrRoom : MonoBehaviour
                 Debug.Log("SubmitRoomTx " + submittx + " : \nReceived: " + webRequest.downloadHandler.text);
 
                 StartCoroutine(makeobjs());
+                StartCoroutine(makewalls());
                 break;
         }
     }
@@ -1641,11 +1905,13 @@ public class vrRoom : MonoBehaviour
     }
 
 
+
+
     public IEnumerator makeroom(SaveInfo infos)
     {
         this.saveInfos = infos;
         string URL = "http://" + this.server + "/jsonrpc";
-        string roomJSon = "{name : \"" + this.roomName + "\"}";
+        string roomJSon = "{name : \"" + this.roomName + "\", wallHeight : " + wallHeight + "  }";
         string makeapproom = "{id:1 , jsonrpc: \"2.0\", method: \"makeappobjtx\", params : [\"" + saveInfos.appName + "\"," + saveInfos.roomTypeId.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(this.saveInfos.mainKey.getPub().Q.GetEncoded(true)) + "\"," + roomJSon + "]}";
         Debug.Log("makeapproom  " + URL + "  " + makeapproom);
 

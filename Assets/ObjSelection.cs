@@ -12,7 +12,7 @@ public class ObjSelection : MonoBehaviour
     public ECDomainParameters domainParams;
     public int MoveObj = 0;
     public float MoveSpeed = 10.0f;
-    public float RotSpeed = 100.0f;
+    public float RotSpeed = 1000.0f;
 
     GameObject panel;
 
@@ -145,10 +145,19 @@ public class ObjSelection : MonoBehaviour
 
     void Update()
     {
-        var bottom = this.transform.localScale.y * this.GetComponent<RectTransform>().rect.height / 2.0f;
-        var objMesh = SelectRoomObject.GetComponent<Collider>();
+       
 
-        this.transform.position = new Vector3(SelectRoomObject.transform.position.x, SelectRoomObject.transform.position.y + bottom + objMesh.bounds.max.y , SelectRoomObject.transform.position.z);
+        if(SelectRoomObject != null)
+        {
+            var bottom = this.transform.localScale.y * this.GetComponent<RectTransform>().rect.height / 2.0f;
+            var objMesh = SelectRoomObject.GetComponent<Collider>();
+
+            var dir = SelectRoomObject.transform.position - Camera.main.transform.position; //a vector pointing from pointA to pointB
+            var rot = Quaternion.LookRotation(dir, Vector3.up); //calc a rotation that
+
+            this.transform.rotation = rot;
+            this.transform.position = new Vector3(SelectRoomObject.transform.position.x, bottom + objMesh.bounds.max.y, SelectRoomObject.transform.position.z);
+        }
 
         if (Input.GetMouseButton(0))
         {

@@ -64,10 +64,18 @@ public class RoomScene
 }
 
 [System.Serializable]
+public class RoomWall
+{
+    public float[] start;
+    public RoomSceneRoot objHash;
+}
+
+[System.Serializable]
 public class Room
 {
     public string name;
     public RoomScene[] objects;
+    public RoomWall[] walls;
     public string objHash;
 }
 
@@ -518,6 +526,7 @@ public struct SaveInfo
     public int sceneTypeId;
     public int roomTypeId;
     public int nodeTypeId;
+    public int wallTypeId;
     public WalletAddress mainKey;
 }
 
@@ -586,7 +595,9 @@ public class loadGallery : MonoBehaviour
 
     public string appName = "UnityApp";
     public int sceneTypeId = 0x34;
-    public int roomTypeId = 0x33;
+    //public int roomTypeId = 0x33;
+    public int wallTypeId = 0x01f;
+    public int roomTypeId = 0x35;
     public int nodeTypeId = 0x08;
     public string server = "nodix.eu";
     
@@ -659,6 +670,7 @@ public class loadGallery : MonoBehaviour
         ret.mainKey = wallet.mainKey;
         ret.nodeTypeId = nodeTypeId;
         ret.roomTypeId = roomTypeId;
+        ret.wallTypeId = wallTypeId;
         ret.sceneTypeId = sceneTypeId;
 
         return ret;
@@ -814,6 +826,8 @@ public class loadGallery : MonoBehaviour
 
         ClearTabs();
 
+        contentPanel.GetComponent<GridLayoutGroup>().cellSize = new Vector2(40.0f, 80.0f);
+        contentPanel.GetComponent<GridLayoutGroup>().spacing = new Vector2(10.0f, 10.0f);
         contentPanel.transform.localPosition = new Vector3(0.0f, 0.0f, 0.0f);
         indexPanel.transform.localPosition = new Vector3(0.0f, 0.0f, 0.0f);
 
@@ -822,9 +836,15 @@ public class loadGallery : MonoBehaviour
         var panel = GameObject.Find("Panel");
         var newButton = roomMenu.transform.Find("New Button");
         var saveButton = roomMenu.transform.Find("Save Button");
+        var editButton = roomMenu.transform.Find("Edit Button");
+        var roomName = roomMenu.transform.Find("Room Name");
+
+        roomName.GetComponent<InputField>().text = room.roomName;
 
         newButton.GetComponent<Button>().onClick.AddListener(() => room.newRoom());
         saveButton.GetComponent<Button>().onClick.AddListener(() => room.saveAllScenes(makeSaveInfos()));
+        editButton.GetComponent<Button>().onClick.AddListener(() => room.roomEditor());
+        roomName.GetComponent<InputField>().onValueChanged.AddListener(room.setName);
 
         roomMenu.transform.SetParent(panel.transform, false);
 
@@ -839,6 +859,8 @@ public class loadGallery : MonoBehaviour
 
         ClearTabs();
 
+        contentPanel.GetComponent<GridLayoutGroup>().cellSize = new Vector2(80.0f, 40.0f);
+        contentPanel.GetComponent<GridLayoutGroup>().spacing = new Vector2(10.0f, 10.0f);
         contentPanel.transform.localPosition = new Vector3(0.0f, 0.0f, 0.0f);
         indexPanel.transform.localPosition = new Vector3(0.0f, 0.0f, 0.0f);
 
@@ -855,6 +877,7 @@ public class loadGallery : MonoBehaviour
         ClearTabs();
 
         contentPanel.GetComponent<GridLayoutGroup>().cellSize = new Vector2(nodesTable.Size, 30.0f);
+        contentPanel.GetComponent<GridLayoutGroup>().spacing = new Vector2(0.0f, 0.0f);
         contentPanel.GetComponent<GridLayoutGroup>().padding.top = 20;
 
         contentPanel.transform.localPosition = new Vector3(0.0f, 0.0f, 0.0f);
@@ -981,6 +1004,12 @@ public class loadGallery : MonoBehaviour
         string curAddr = galleriesAddress.GetComponentInChildren<InputField>().text;
         bool found;
 
+
+        contentPanel.GetComponent<GridLayoutGroup>().cellSize = new Vector2(50.0f, 30.0f);
+        contentPanel.GetComponent<GridLayoutGroup>().spacing = new Vector2(10.0f, 10.0f);
+
+        var panel = GameObject.Find("Panel");
+
         MenuItems[0].GetComponentInChildren<Renderer>().material = defaultSphereMat;
         MenuItems[1].GetComponentInChildren<Renderer>().material = defaultSphereMat;
         MenuItems[2].GetComponentInChildren<Renderer>().material = defaultSphereMat;
@@ -998,18 +1027,20 @@ public class loadGallery : MonoBehaviour
         Headers[0].AddComponent<Text>().text = "Wallet";
         Headers[0].GetComponent<Text>().font = textFont;
         Headers[0].GetComponent<Text>().alignment = TextAnchor.MiddleCenter;
-        Headers[0].transform.position = new Vector3(StartPos[0], startY + StartPos[1], 0.0f);
-        Headers[0].transform.localScale = new Vector3(0.4f, 1.0f, 1.0f);
-        Headers[0].transform.SetParent(contentPanel.transform, false);
+        Headers[0].GetComponent<RectTransform>().sizeDelta = new Vector2(80.0f, 20.0f);
+        Headers[0].transform.position = new Vector3(-32.0f, 10.0f, 0.0f);
+        Headers[0].transform.localScale = new Vector3(0.4f, 0.2f, 1.0f);
+        Headers[0].transform.SetParent(panel.transform, false);
 
         Headers[1] = new GameObject();
 
         Headers[1].AddComponent<Text>().text = "Contacts";
         Headers[1].GetComponent<Text>().font = textFont;
         Headers[1].GetComponent<Text>().alignment = TextAnchor.MiddleCenter;
-        Headers[1].transform.position = new Vector3(StartPos[0] + 100.0f, startY + StartPos[1], 0.0f);
-        Headers[1].transform.localScale = new Vector3(0.4f, 1.0f, 1.0f);
-        Headers[1].transform.SetParent(contentPanel.transform, false);
+        Headers[1].GetComponent<RectTransform>().sizeDelta = new Vector2(80.0f, 30.0f);
+        Headers[1].transform.position = new Vector3(15.0f, 10.0f, 0.0f);
+        Headers[1].transform.localScale = new Vector3(0.4f, 0.2f, 1.0f);
+        Headers[1].transform.SetParent(panel.transform, false);
 
         walletTable.NodeRow = new NodeTableRow[wallet.addresses.Count];
 
@@ -1035,7 +1066,7 @@ public class loadGallery : MonoBehaviour
 
                     walletTable.NodeRow[n].Columns[0].transform.position = new Vector3(StartPos[0], startY + StartPos[1] + (nWallets + 1) * Spacing[1], 0);
                     walletTable.NodeRow[n].Columns[0].transform.localScale = new Vector3(0.4f, 1.0f, 1.0f);
-                    walletTable.NodeRow[n].Columns[0].transform.SetParent(contentPanel.transform, false);
+                    walletTable.NodeRow[n].Columns[0].transform.SetParent(indexPanel.transform, false);
 
                     nWallets++;
                 }
@@ -1351,6 +1382,8 @@ public class loadGallery : MonoBehaviour
 
                 Debug.Log("ROOM  " + hash + " : \nReceived: " + webRequest.downloadHandler.text);
 
+                room.resetRoom();
+
                 var mroom = JsonUtility.FromJson<Room>(webRequest.downloadHandler.text);
                 if(mroom.objects == null)
                 {
@@ -1363,7 +1396,21 @@ public class loadGallery : MonoBehaviour
                         room.loadScene(mroom.objects[n].objHash);
                     }
                 }
-             break;
+
+                if (mroom.walls == null)
+                {
+                    Debug.Log("ROOM  no walls");
+                }
+                else
+                {
+                    for (int n = 0; n < mroom.walls.Length; n++)
+                    {
+                        room.newWallSeg(new Vector2(mroom.walls[n].start[0], mroom.walls[n].start[1]), mroom.walls[n].objHash.objHash);
+                    }
+
+                    room.buildWalls();
+                }
+                break;
         }
     }
 
