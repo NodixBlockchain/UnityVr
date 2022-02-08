@@ -2,17 +2,18 @@ using System.Collections;
 using System.Collections.Generic;
 
 using System;
+using System.IO;
+
+
+using Org.BouncyCastle.Crypto.Parameters;
+using Org.BouncyCastle.Math.EC;
 
 using UnityEngine;
-using Org.BouncyCastle.Crypto.Parameters;
-
-using UnityGLTF.Extensions;
-
 using UnityEngine.UI;
 using UnityEngine.XR.Interaction.Toolkit;
 using UnityEngine.Networking;
 
-
+using UnityGLTF.Extensions;
 
 
 [System.Serializable]
@@ -253,6 +254,62 @@ class WallSegment
     }
 }
 
+class Blinker : MonoBehaviour
+{
+    double cur;
+    Color[] matCols = null;
+    void Start()
+    {
+        MeshRenderer mrs = GetComponent<MeshRenderer>();
+        cur = 0;
+
+
+        matCols = new Color[mrs.materials.Length];
+
+        for (int n = 0; n < mrs.materials.Length; n++)
+        {
+            matCols[n] = mrs.materials[n].color;
+        }
+    }
+    void Update()
+    {
+        MeshRenderer mrs = GetComponent<MeshRenderer>();
+        cur += Time.deltaTime;
+        float alpha = (float)(Math.Sin(cur * 4.0f) + 1.0f) / 2.0f;
+
+        for (int n = 0; n < mrs.materials.Length; n++)
+        {
+            mrs.materials[n].SetColor("_Color", new Color(matCols[n].r * alpha, matCols[n].g * alpha, matCols[n].b * alpha, matCols[n].a * alpha));
+        }
+
+    }
+
+    void OnDestroy()
+    {
+        MeshRenderer mrs = GetComponent<MeshRenderer>();
+
+        if (matCols == null)
+            return;
+
+        for (int n = 0; n < mrs.materials.Length; n++)
+        {
+            mrs.materials[n].SetColor("_Color", new Color(matCols[n].r, matCols[n].g, matCols[n].b, matCols[n].a));
+        }
+    }
+}
+
+public class roomUser
+{
+    public byte[] pkey;
+    public string addr;
+    public string name;
+    public byte[] avatar;
+    public Vector3 pos;
+    public Quaternion rot;
+
+    public GameObject AvatarObj;
+}
+
 public class vrRoom : MonoBehaviour
 {
     public Material wallSegMat;
@@ -265,17 +322,29 @@ public class vrRoom : MonoBehaviour
     public string server;
     public GameObject floorPlane;
     public GameObject mainPanel;
+    public string roomHash;
 
+    public int sceneTypeId = 0x34;
+    public int wallTypeId = 0x01f;
+    public int roomTypeId = 0x37;
+    public int avatarTypeId = 0x36;
+    public int userTypeId = 0x2B;
+    public int nodeTypeId = 0x08;
+
+    public List<roomUser> users;
 
     private ECDomainParameters domainParams;
 
 
     private Transaction roomTx;
-    private SaveInfo saveInfos;
+    private Transaction userTx;
+    private WalletAddress mykey;
 
     private Grid grid;
 
+    private string appName = "UnityApp";
     private string baseURL = "/app/UnityApp";
+
     
 
     private List<WallSegment> wallSegments;
@@ -306,6 +375,8 @@ public class vrRoom : MonoBehaviour
     private bool SetWallObj = false;
     private bool lastTrigger = false;
     private bool hasHeadset = false;
+    private bool sendingPos;
+
 
     private Vector3 origPos ;
 
@@ -318,11 +389,14 @@ public class vrRoom : MonoBehaviour
 
         hasHeadset = hasHMD();
 
-        this.wallSegments = new List<WallSegment>();
+        wallSegments = new List<WallSegment>();
+        users = new List<roomUser>();
 
         var rightCont = GameObject.Find("RightHand Controller");
         if(rightCont != null)
             RightInteractor = rightCont.GetComponent<XRRayInteractor>();
+
+        this.roomHash = null;
     }
     public bool isEditingWall()
     {
@@ -333,6 +407,154 @@ public class vrRoom : MonoBehaviour
     {
         this.domainParams = domainParams;
 
+    }
+
+    public void loadUserAvatar(roomUser user)
+    {
+        if (Nodes.isNullHash(user.avatar))
+            return;
+
+      
+
+
+        string URL = "http://" + server + baseURL + "/obj/" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(user.avatar);
+
+        Debug.Log("loading user avatar " + URL);
+
+        user.AvatarObj = new GameObject();
+        user.AvatarObj.AddComponent<UnityGLTF.GLTFComponent>().GLTFUri = URL;
+        user.AvatarObj.GetComponent<UnityGLTF.GLTFComponent>().Timeout = 120;
+        user.AvatarObj.GetComponent<UnityGLTF.GLTFComponent>().Collider = UnityGLTF.GLTFSceneImporter.ColliderType.Box;
+        user.AvatarObj.transform.position = user.pos;
+        user.AvatarObj.transform.rotation = user.rot;
+    }
+
+    public void newUser(roomUser user)
+    {
+        for(int n=0;n<users.Count;n++)
+        {
+            if (users[n].addr == user.addr)
+            {
+                /*users[n] = user;*/
+
+                if(Nodes.compareHash(user.avatar, users[n].avatar) != 0)
+                {
+                    users[n].avatar = user.avatar;
+                    loadUserAvatar(user);
+                }
+                else if(users[n].AvatarObj)
+                {
+                    users[n].AvatarObj.transform.position = new Vector3(user.pos.x, user.pos.y+2.0f, user.pos.z); ;
+                    users[n].AvatarObj.transform.rotation = user.rot;
+                }
+                return;
+            }
+        }
+
+        
+        loadUserAvatar(user);
+        
+
+        users.Add(user);
+    }
+    public byte[] userToBytes(roomUser user)
+    {
+        MemoryStream m = new MemoryStream();
+        BinaryWriter writer = new BinaryWriter(m);
+
+        Nodes.writeVINT((ulong)user.name.Length, writer);
+        writer.Write(user.name.ToCharArray());
+        writer.Write(user.avatar);
+
+        writer.Write(user.pos.x);
+        writer.Write(user.pos.y);
+        writer.Write(user.pos.z);
+
+
+        writer.Write(user.rot.x);
+        writer.Write(user.rot.y);
+        writer.Write(user.rot.z);
+        writer.Write(user.rot.w);
+
+        byte[] objBuffer = new byte[m.Position];
+        Buffer.BlockCopy(m.ToArray(), 0, objBuffer, 0, (int)m.Position);
+
+
+        return objBuffer;
+    }
+    public bool newObj(uint type, byte[] data)
+    {
+        if( (type & 0x00FFFFFF) == userTypeId)
+        {
+            float x;
+            float y;
+            float z;
+            float w;
+            long tlen;
+            byte opcode;
+
+            roomUser user =new roomUser ();
+
+            MemoryStream buffer = new MemoryStream(data);
+            BinaryReader reader = new BinaryReader(buffer);
+
+            int pkLen = reader.ReadByte();
+
+            if (pkLen != 33)
+                return false;
+
+
+            user.pkey = reader.ReadBytes(33);
+
+            user.addr = WalletAddress.pub2addr(new ECPublicKeyParameters(domainParams.Curve.DecodePoint(user.pkey), domainParams));
+
+            opcode = reader.ReadByte();
+            if (opcode != 0xAC)
+                return false;
+
+            opcode = reader.ReadByte();
+
+            if (opcode != 0x6A)
+                return false;
+
+            opcode = reader.ReadByte();
+           
+
+            if (opcode == 0x4c)
+                tlen = (long)reader.ReadByte();
+            else if (opcode == 0x4d)
+                tlen = (long)reader.ReadUInt16();
+            else if (opcode == 0x4e)
+                tlen = (long)reader.ReadUInt32();
+            else
+                return false;
+            
+            long nlen = Nodes.readVINT(reader);
+
+            user.name = new string(reader.ReadChars((int)nlen));
+            user.avatar = reader.ReadBytes(32);
+
+            x = reader.ReadSingle();
+            y = reader.ReadSingle();
+            z = reader.ReadSingle();
+
+            user.pos = new Vector3(x, y, z);
+
+            x = reader.ReadSingle();
+            y = reader.ReadSingle();
+            z = reader.ReadSingle();
+            w = reader.ReadSingle();
+
+            user.rot = new Quaternion(x, y, z, w);
+
+            Debug.Log("new user " + user.name + " " + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(user.avatar) + " " + user.pos.ToString() + " " + user.rot.eulerAngles.ToString());
+
+            newUser(user);
+
+            return true;
+        }
+
+        return true;
     }
 
     public void resetRoom()
@@ -359,6 +581,7 @@ public class vrRoom : MonoBehaviour
             }
         }
         this.wallSegments = new List<WallSegment>();
+        this.roomHash = null;
     }
 
 
@@ -1431,12 +1654,16 @@ public class vrRoom : MonoBehaviour
             case UnityWebRequest.Result.ConnectionError:
             case UnityWebRequest.Result.DataProcessingError:
                 Debug.Log("SubmitTx " + submittx + " : Error: " + webRequest.error);
+                this.sendingPos = false;
                 break;
             case UnityWebRequest.Result.ProtocolError:
                 Debug.Log("SubmitTx " + submittx + " : HTTP Error: " + webRequest.error);
+                this.sendingPos = false;
                 break;
             case UnityWebRequest.Result.Success:
                 Debug.Log("SubmitTx " + submittx + " : \nReceived: " + webRequest.downloadHandler.text);
+
+                this.sendingPos = false;
                 break;
         }
     }
@@ -1447,8 +1674,8 @@ public class vrRoom : MonoBehaviour
 
         for (int n = 0; n < tx.txsin.Count; n++)
         {
-            byte[] derSign = this.saveInfos.mainKey.Sign(Org.BouncyCastle.Utilities.Encoders.Hex.Decode(tx.txsin[n].signHash), this.domainParams);
-            string signtx = "{id:1 , jsonrpc: \"2.0\", method: \"signtxinput\", params : [\"" + tx.txid + "\"," + n.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(derSign) + "\",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(this.saveInfos.mainKey.getPub().Q.GetEncoded(true)) + "\"]}";
+            byte[] derSign = this.mykey.Sign(Org.BouncyCastle.Utilities.Encoders.Hex.Decode(tx.txsin[n].signHash), this.domainParams);
+            string signtx = "{id:1 , jsonrpc: \"2.0\", method: \"signtxinput\", params : [\"" + tx.txid + "\"," + n.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(derSign) + "\",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(this.mykey.getPub().Q.GetEncoded(true)) + "\"]}";
             UnityWebRequest webRequest = UnityWebRequest.Put(URL, signtx);
             webRequest.SetRequestHeader("Content-Type", "application/json");
             // Request and wait for the desired page.
@@ -1459,9 +1686,11 @@ public class vrRoom : MonoBehaviour
                 case UnityWebRequest.Result.ConnectionError:
                 case UnityWebRequest.Result.DataProcessingError:
                     Debug.Log("signTx  " + signtx + " : Error: " + webRequest.error);
+                    this.sendingPos = false;
                     break;
                 case UnityWebRequest.Result.ProtocolError:
                     Debug.Log("signTx  " + signtx + " : HTTP Error: " + webRequest.error);
+                    this.sendingPos = false;
                     break;
                 case UnityWebRequest.Result.Success:
 
@@ -1483,7 +1712,7 @@ public class vrRoom : MonoBehaviour
 
         for (int on = 0; on < gltfref.objs.Count; on++)
         {
-            string addchild = "{id:1 , jsonrpc: \"2.0\", method:\"addchildobj\", params : [\"" + saveInfos.appName + "\",\"" + gltfref.sceneTx.txid + "\",\"nodes\",\"" + gltfref.objs[on].nodeTx.txid + "\"]}";
+            string addchild = "{id:1 , jsonrpc: \"2.0\", method:\"addchildobj\", params : [\"" + appName + "\",\"" + gltfref.sceneTx.txid + "\",\"nodes\",\"" + gltfref.objs[on].nodeTx.txid + "\"]}";
             UnityWebRequest webRequest = UnityWebRequest.Put(URL, addchild);
             webRequest.SetRequestHeader("Content-Type", "application/json");
 
@@ -1549,8 +1778,8 @@ public class vrRoom : MonoBehaviour
         {
             for (int n = 0; n < gltfref.objs[on].nodeTx.txsin.Count; n++)
             {
-                byte[] derSign = this.saveInfos.mainKey.Sign(Org.BouncyCastle.Utilities.Encoders.Hex.Decode(gltfref.objs[on].nodeTx.txsin[n].signHash), this.domainParams);
-                string signtx = "{id:1 , jsonrpc: \"2.0\", method: \"signtxinput\", params : [\"" + gltfref.objs[on].nodeTx.txid + "\"," + n.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(derSign) + "\",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(this.saveInfos.mainKey.getPub().Q.GetEncoded(true)) + "\"]}";
+                byte[] derSign = this.mykey.Sign(Org.BouncyCastle.Utilities.Encoders.Hex.Decode(gltfref.objs[on].nodeTx.txsin[n].signHash), this.domainParams);
+                string signtx = "{id:1 , jsonrpc: \"2.0\", method: \"signtxinput\", params : [\"" + gltfref.objs[on].nodeTx.txid + "\"," + n.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(derSign) + "\",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(this.mykey.getPub().Q.GetEncoded(true)) + "\"]}";
                 UnityWebRequest webRequest = UnityWebRequest.Put(URL, signtx);
                 webRequest.SetRequestHeader("Content-Type", "application/json");
                 // Request and wait for the desired page.
@@ -1598,7 +1827,7 @@ public class vrRoom : MonoBehaviour
             nodeJson += "scale: [" + Scale.x.ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + Scale.y.ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + Scale.z.ToString(System.Globalization.CultureInfo.InvariantCulture) + "], ";
             nodeJson += "rotation: [" + myQ.X.ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + myQ.Y.ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + myQ.Z.ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + myQ.W.ToString(System.Globalization.CultureInfo.InvariantCulture) + "]}";
 
-            string makenodeobj = "{id:1 , jsonrpc: \"2.0\", method:\"makeappobjtx\", params : [\"" + this.saveInfos.appName + "\"," + this.saveInfos.nodeTypeId.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(this.saveInfos.mainKey.getPub().Q.GetEncoded(true)) + "\"," + nodeJson + "]}";
+            string makenodeobj = "{id:1 , jsonrpc: \"2.0\", method:\"makeappobjtx\", params : [\"" + this.appName + "\"," + this.nodeTypeId.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(this.mykey.getPub().Q.GetEncoded(true)) + "\"," + nodeJson + "]}";
 
             UnityWebRequest webRequest = UnityWebRequest.Put(URL, makenodeobj);
             webRequest.SetRequestHeader("Content-Type", "application/json");
@@ -1643,7 +1872,7 @@ public class vrRoom : MonoBehaviour
 
         for (int n = 0; n < this.sceneObjects.Count; n++)
         {
-            string addchild = "{id:1 , jsonrpc: \"2.0\", method:\"addchildobj\", params : [\"" + saveInfos.appName + "\",\"" + this.roomTx.txid + "\",\"objects\",\"" + this.sceneObjects[n].sceneTx.txid + "\"]}";
+            string addchild = "{id:1 , jsonrpc: \"2.0\", method:\"addchildobj\", params : [\"" + appName + "\",\"" + this.roomTx.txid + "\",\"objects\",\"" + this.sceneObjects[n].sceneTx.txid + "\"]}";
             UnityWebRequest webRequest = UnityWebRequest.Put(URL, addchild);
             webRequest.SetRequestHeader("Content-Type", "application/json");
 
@@ -1704,8 +1933,8 @@ public class vrRoom : MonoBehaviour
 
         for (int n = 0; n < gltfref.sceneTx.txsin.Count; n++)
         {
-            byte[] derSign = this.saveInfos.mainKey.Sign(Org.BouncyCastle.Utilities.Encoders.Hex.Decode(gltfref.sceneTx.txsin[n].signHash), this.domainParams);
-            string signtx = "{id:1 , jsonrpc: \"2.0\", method: \"signtxinput\", params : [\"" + gltfref.sceneTx.txid + "\"," + n.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(derSign) + "\",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(this.saveInfos.mainKey.getPub().Q.GetEncoded(true)) + "\"]}";
+            byte[] derSign = this.mykey.Sign(Org.BouncyCastle.Utilities.Encoders.Hex.Decode(gltfref.sceneTx.txsin[n].signHash), this.domainParams);
+            string signtx = "{id:1 , jsonrpc: \"2.0\", method: \"signtxinput\", params : [\"" + gltfref.sceneTx.txid + "\"," + n.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(derSign) + "\",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(this.mykey.getPub().Q.GetEncoded(true)) + "\"]}";
             UnityWebRequest webRequest = UnityWebRequest.Put(URL, signtx);
             webRequest.SetRequestHeader("Content-Type", "application/json");
             // Request and wait for the desired page.
@@ -1764,7 +1993,7 @@ public class vrRoom : MonoBehaviour
 
         string URL = "http://" + this.server + "/jsonrpc";
 
-        string addchild = "{id:1 , jsonrpc: \"2.0\", method:\"addchildobj\", params : [\"" + saveInfos.appName + "\",\"" + this.roomTx.txid + "\",\"walls\",\"" + Seg.wallTx.txid + "\"]}";
+        string addchild = "{id:1 , jsonrpc: \"2.0\", method:\"addchildobj\", params : [\"" + appName + "\",\"" + this.roomTx.txid + "\",\"walls\",\"" + Seg.wallTx.txid + "\"]}";
         UnityWebRequest webRequest = UnityWebRequest.Put(URL, addchild);
         webRequest.SetRequestHeader("Content-Type", "application/json");
 
@@ -1798,8 +2027,8 @@ public class vrRoom : MonoBehaviour
 
         for (int n = 0; n < seg.wallTx.txsin.Count; n++)
         {
-            byte[] derSign = this.saveInfos.mainKey.Sign(Org.BouncyCastle.Utilities.Encoders.Hex.Decode(seg.wallTx.txsin[n].signHash), this.domainParams);
-            string signtx = "{id:1 , jsonrpc: \"2.0\", method: \"signtxinput\", params : [\"" + seg.wallTx.txid + "\"," + n.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(derSign) + "\",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(this.saveInfos.mainKey.getPub().Q.GetEncoded(true)) + "\"]}";
+            byte[] derSign = this.mykey.Sign(Org.BouncyCastle.Utilities.Encoders.Hex.Decode(seg.wallTx.txsin[n].signHash), this.domainParams);
+            string signtx = "{id:1 , jsonrpc: \"2.0\", method: \"signtxinput\", params : [\"" + seg.wallTx.txid + "\"," + n.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(derSign) + "\",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(this.mykey.getPub().Q.GetEncoded(true)) + "\"]}";
             UnityWebRequest webRequest = UnityWebRequest.Put(URL, signtx);
             webRequest.SetRequestHeader("Content-Type", "application/json");
             // Request and wait for the desired page.
@@ -1833,7 +2062,7 @@ public class vrRoom : MonoBehaviour
         {
             string URL = "http://" + this.server + "/jsonrpc";
             string wallJSon = "{start : [" + this.wallSegments[n].start.x.ToString() + "," + this.wallSegments[n].start.y.ToString() + "], objHash : \"" + this.wallSegments[n].gltfObjs.rootHash + "\" }";
-            string makeappwall = "{id:1 , jsonrpc: \"2.0\", method: \"makeappobjtx\", params : [\"" + saveInfos.appName + "\"," + saveInfos.wallTypeId.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(this.saveInfos.mainKey.getPub().Q.GetEncoded(true)) + "\"," + wallJSon + "]}";
+            string makeappwall = "{id:1 , jsonrpc: \"2.0\", method: \"makeappobjtx\", params : [\"" + appName + "\"," + wallTypeId.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(this.mykey.getPub().Q.GetEncoded(true)) + "\"," + wallJSon + "]}";
 
             Debug.Log("makewall  " + URL + "  " + makeappwall);
 
@@ -1871,7 +2100,7 @@ public class vrRoom : MonoBehaviour
         {
             gltfRef gltfref = this.sceneObjects[n];
             string sceneJSon = "{root : \"" + gltfref.rootHash + "\"}";
-            string makeappobj = "{id:1 , jsonrpc: \"2.0\", method: \"makeappobjtx\", params : [\"" + saveInfos.appName + "\"," + saveInfos.sceneTypeId.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(this.saveInfos.mainKey.getPub().Q.GetEncoded(true)) + "\"," + sceneJSon + "]}";
+            string makeappobj = "{id:1 , jsonrpc: \"2.0\", method: \"makeappobjtx\", params : [\"" + appName + "\"," + sceneTypeId.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(this.mykey.getPub().Q.GetEncoded(true)) + "\"," + sceneJSon + "]}";
             Debug.Log("makeobj  " + URL + "  " + makeappobj);
 
             UnityWebRequest scenewebRequest = UnityWebRequest.Put(URL, makeappobj);
@@ -1934,8 +2163,8 @@ public class vrRoom : MonoBehaviour
 
         for (int n = 0; n < this.roomTx.txsin.Count; n++)
         {
-            byte[] derSign = this.saveInfos.mainKey.Sign(Org.BouncyCastle.Utilities.Encoders.Hex.Decode(this.roomTx.txsin[n].signHash), this.domainParams);
-            string signtx = "{id:1 , jsonrpc: \"2.0\", method: \"signtxinput\", params : [\"" + this.roomTx.txid + "\"," + n.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(derSign) + "\",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(this.saveInfos.mainKey.getPub().Q.GetEncoded(true)) + "\"]}";
+            byte[] derSign = this.mykey.Sign(Org.BouncyCastle.Utilities.Encoders.Hex.Decode(this.roomTx.txsin[n].signHash), this.domainParams);
+            string signtx = "{id:1 , jsonrpc: \"2.0\", method: \"signtxinput\", params : [\"" + this.roomTx.txid + "\"," + n.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(derSign) + "\",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(mykey.getPub().Q.GetEncoded(true)) + "\"]}";
             UnityWebRequest webRequest = UnityWebRequest.Put(URL, signtx);
             webRequest.SetRequestHeader("Content-Type", "application/json");
             // Request and wait for the desired page.
@@ -1969,12 +2198,11 @@ public class vrRoom : MonoBehaviour
 
 
 
-    public IEnumerator makeroom(SaveInfo infos)
+    public IEnumerator makeroom()
     {
-        this.saveInfos = infos;
         string URL = "http://" + this.server + "/jsonrpc";
         string roomJSon = "{name : \"" + this.roomName + "\", wallHeight : " + wallHeight + "  }";
-        string makeapproom = "{id:1 , jsonrpc: \"2.0\", method: \"makeappobjtx\", params : [\"" + saveInfos.appName + "\"," + saveInfos.roomTypeId.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(this.saveInfos.mainKey.getPub().Q.GetEncoded(true)) + "\"," + roomJSon + "]}";
+        string makeapproom = "{id:1 , jsonrpc: \"2.0\", method: \"makeappobjtx\", params : [\"" + appName + "\"," + roomTypeId.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(this.mykey.getPub().Q.GetEncoded(true)) + "\"," + roomJSon + "]}";
         Debug.Log("makeapproom  " + URL + "  " + makeapproom);
 
         UnityWebRequest scenewebRequest = UnityWebRequest.Put(URL, makeapproom);
@@ -2003,10 +2231,163 @@ public class vrRoom : MonoBehaviour
         }
     }
 
-    public void saveAllScenes(SaveInfo infos)
+
+    IEnumerator addRoomUserTx()
+    {
+        string URL = "http://" + this.server + "/jsonrpc";
+
+        string addchild = "{id:1 , jsonrpc: \"2.0\", method:\"addchildobj\", params : [\"" + appName + "\",\"" + this.roomHash + "\",\"users\",\"" + this.userTx.txid + "\",  [], 0, 0xFFFFFFFF]}";
+        UnityWebRequest webRequest = UnityWebRequest.Put(URL, addchild);
+        webRequest.SetRequestHeader("Content-Type", "application/json");
+
+        // Request and wait for the desired page.
+        yield return webRequest.SendWebRequest();
+        switch (webRequest.result)
+        {
+            case UnityWebRequest.Result.ConnectionError:
+            case UnityWebRequest.Result.DataProcessingError:
+                Debug.Log("addRoomUserTx  " + addchild + " : Error: " + webRequest.error);
+                this.sendingPos = false;
+                break;
+            case UnityWebRequest.Result.ProtocolError:
+                Debug.Log("addRoomUserTx  " + addchild + " : HTTP Error: " + webRequest.error);
+                this.sendingPos = false;
+                break;
+            case UnityWebRequest.Result.Success:
+
+                Debug.Log("addRoomUserTx " + addchild + " : \nReceived: " + webRequest.downloadHandler.text);
+                Transaction myTransaction = JsonUtility.FromJson<RPCTransaction>(webRequest.downloadHandler.text).result.transaction;
+                Debug.Log("addRoomUserTx myTransaction " + myTransaction.txid + " " + this.userTx.txid);
+                myTransaction.issigned = false;
+                StartCoroutine(signTxInputs(myTransaction));
+
+                break;
+        }
+    }
+
+    IEnumerator SubmitUserTx()
+    {
+        string URL = "http://" + this.server + "/jsonrpc";
+        string submittx = "{id:1 , jsonrpc: \"2.0\", method:\"submittx\", params : [\"" + this.userTx.txid + "\"]}";
+        UnityWebRequest webRequest = UnityWebRequest.Put(URL, submittx);
+        webRequest.SetRequestHeader("Content-Type", "application/json");
+        // Request and wait for the desired page.
+        yield return webRequest.SendWebRequest();
+
+        switch (webRequest.result)
+        {
+            case UnityWebRequest.Result.ConnectionError:
+            case UnityWebRequest.Result.DataProcessingError:
+                Debug.Log("SubmitUserTx " + submittx + " : Error: " + webRequest.error);
+                this.sendingPos = false;
+                break;
+            case UnityWebRequest.Result.ProtocolError:
+                Debug.Log("SubmitUserTx " + submittx + " : HTTP Error: " + webRequest.error);
+                this.sendingPos = false;
+                break;
+            case UnityWebRequest.Result.Success:
+                Debug.Log("SubmitUserTx " + submittx + " : \nReceived: " + webRequest.downloadHandler.text);
+
+                StartCoroutine(addRoomUserTx());
+                
+                break;
+        }
+    }
+
+
+    IEnumerator signUserTxInputs()
+    {
+        string URL = "http://" + this.server + "/jsonrpc";
+
+
+        for (int n = 0; n < this.userTx.txsin.Count; n++)
+        {
+            byte[] derSign = this.mykey.Sign(Org.BouncyCastle.Utilities.Encoders.Hex.Decode(this.userTx.txsin[n].signHash), this.domainParams);
+            string signtx = "{id:1 , jsonrpc: \"2.0\", method: \"signtxinput\", params : [\"" + this.userTx.txid + "\"," + n.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(derSign) + "\",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(this.mykey.getPub().Q.GetEncoded(true)) + "\"]}";
+            UnityWebRequest webRequest = UnityWebRequest.Put(URL, signtx);
+            webRequest.SetRequestHeader("Content-Type", "application/json");
+            // Request and wait for the desired page.
+            yield return webRequest.SendWebRequest();
+
+            switch (webRequest.result)
+            {
+                case UnityWebRequest.Result.ConnectionError:
+                case UnityWebRequest.Result.DataProcessingError:
+                    Debug.Log("signUserTxInputs  " + signtx + " : Error: " + webRequest.error);
+                    this.sendingPos = false;
+                    break;
+                case UnityWebRequest.Result.ProtocolError:
+                    Debug.Log("signUserTxInputs  " + signtx + " : HTTP Error: " + webRequest.error);
+                    this.sendingPos = false;
+                    break;
+                case UnityWebRequest.Result.Success:
+
+                    Debug.Log("signUserTxInputs signtxinput" + signtx + " : \nReceived: " + webRequest.downloadHandler.text);
+
+                    this.userTx.txid = JsonUtility.FromJson<RPCSign>(webRequest.downloadHandler.text).result.txid;
+
+                    Debug.Log("signUserTxInputs signtxinput" + this.userTx.txid);
+                    break;
+            }
+        }
+
+        this.userTx.issigned = true;
+
+        StartCoroutine(SubmitUserTx());
+    }
+
+    public IEnumerator SendAvatarPosMessage(WalletAddress mykey,string userName, string avatarHash, Vector3 pos, Quaternion rot)
+    {
+
+        
+        if (this.sendingPos)
+            yield break;
+
+        this.sendingPos = true;
+
+        this.mykey = mykey;
+        string URL = "http://" + this.server + "/jsonrpc";
+        string userJSon = "{name : \"" + userName + "\", avatar : \"" + avatarHash + "\", ";
+        userJSon += "pos : [ " + pos.x.ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + pos.y.ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + pos.z.ToString(System.Globalization.CultureInfo.InvariantCulture) +"] ,";
+        userJSon += "rot : [ " + rot.x.ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + rot.y.ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + rot.z.ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + rot.w.ToString(System.Globalization.CultureInfo.InvariantCulture) + "]";
+        userJSon += "  }";
+
+        string makeappuser = "{id:1 , jsonrpc: \"2.0\", method: \"makeappobjtx\", params : [\"" + appName + "\"," + userTypeId.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(this.mykey.getPub().Q.GetEncoded(true)) + "\"," + userJSon + ", [], 0, 0, 99999, 0xFFFFFFFF] }";
+        Debug.Log("makeappuser  " + URL + "  " + makeappuser);
+
+        UnityWebRequest scenewebRequest = UnityWebRequest.Put(URL, makeappuser);
+        scenewebRequest.SetRequestHeader("Content-Type", "application/json");
+        // Request and wait for the desired page.
+        yield return scenewebRequest.SendWebRequest();
+
+        switch (scenewebRequest.result)
+        {
+            case UnityWebRequest.Result.ConnectionError:
+            case UnityWebRequest.Result.DataProcessingError:
+                Debug.Log("makeappuser  " + makeappuser + " : Error: " + scenewebRequest.error);
+                this.sendingPos = false;
+                break;
+            case UnityWebRequest.Result.ProtocolError:
+                Debug.Log("makeappuser  " + makeappuser + " : HTTP Error: " + scenewebRequest.error);
+                this.sendingPos = false;
+                break;
+            case UnityWebRequest.Result.Success:
+
+                Debug.Log("makeappuser " + makeappuser + " : \nReceived: " + scenewebRequest.downloadHandler.text);
+                this.userTx = JsonUtility.FromJson<RPCTransaction>(scenewebRequest.downloadHandler.text).result.transaction;
+                Debug.Log("makeappuser myTransaction" + this.userTx.txid + " " + this.userTx.txsin.Count);
+                this.userTx.issigned = false;
+                StartCoroutine(signUserTxInputs());
+
+                break;
+        }
+    }
+
+    public void saveAllScenes(WalletAddress mainKey)
     {
         Debug.Log("save scenes " + this.sceneObjects.Count);
-        StartCoroutine(this.makeroom(infos));
+        this.mykey = mainKey;
+        StartCoroutine(this.makeroom());
     }
 
 

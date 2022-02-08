@@ -1,6 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
-using System.Net;
+
 using System.IO;
 using System.Xml.Serialization;
 using System.Text;
@@ -80,6 +80,18 @@ public class Room
 }
 
 [System.Serializable]
+public class Avatar
+{
+    public string name;
+    public RoomSceneRoot obj;
+    public Vector3 pos;
+    public Quaternion rot;
+    public string objHash;
+
+}
+
+
+[System.Serializable]
 public class NodePrivaKey
 {
     public string privkey;
@@ -123,7 +135,7 @@ public class WalletAddress
         return stream.ToArray();
     }
 
-    public string pub2addr(ECPublicKeyParameters key)
+    public static string pub2addr(ECPublicKeyParameters key)
     {
         byte[] step1=new byte[25];
         ECPoint PubPoint = key.Q;
@@ -385,7 +397,7 @@ public class Wallet
         }
     }
 
-    public Wallet(MonoBehaviour mainmono)
+    public Wallet()
     {
         addresses = new List<WalletAddress> ();
 
@@ -457,44 +469,6 @@ public class Wallet
     public List<WalletAddress> addresses;
 }
 
-
-/*
-[System.Serializable]
-public class Node
-{
-
-    public Node(string adr, int port, bool seed)
-    {
-        address = adr;
-
-        try
-        {
-            IPHostEntry Entry = Dns.GetHostEntry(address);
-            ip = Entry.AddressList[0].MapToIPv4();
-            isSeed = seed;
-            P2PPort = port;
-            HTTPPort = 80;
-
-        }
-        catch
-        {
-            ip = null;
-            isSeed = seed;
-            P2PPort = 0;
-            HTTPPort =  0;
-        }
-    }
-
-    public string address;
-    public IPAddress ip;
-    public int P2PPort;
-    public int HTTPPort;
-    public bool isSeed;
-    public int ping;
-}
-*/
-
-
 public class NodeTableRow
 {
     public GameObject[] Columns;
@@ -521,64 +495,7 @@ public class itemTable
 
 }
 
-public struct SaveInfo
-{
-    public string appName;
-    public int sceneTypeId;
-    public int roomTypeId;
-    public int nodeTypeId;
-    public int wallTypeId;
-    public WalletAddress mainKey;
-}
 
-class Blinker : MonoBehaviour
-{
-    double cur;
-    Color[] matCols=null;
-    void Start()
-    {
-        MeshRenderer mrs = GetComponent<MeshRenderer>();
-        cur = 0;
-
-        Debug.Log("blinker start " + mrs.gameObject.name);
-
-        matCols = new Color[mrs.materials.Length];
-
-        for (int n = 0; n < mrs.materials.Length; n++)
-        {
-            Debug.Log("blinker start mat col" + mrs.materials[n].color.ToString());
-
-            matCols[n] = mrs.materials[n].color;
-        }
-    }
-    void Update()
-    {
-        MeshRenderer mrs = GetComponent<MeshRenderer>();
-        cur += Time.deltaTime;
-        float alpha = (float)(Math.Sin(cur * 4.0f) + 1.0f) / 2.0f;
-
-        for(int n=0;n< mrs.materials.Length;n++)
-        {
-            mrs.materials[n].SetColor("_Color", new Color(matCols[n].r * alpha, matCols[n].g * alpha, matCols[n].b * alpha, matCols[n].a * alpha));
-        }
-
-    }
-
-    void OnDestroy()
-    {
-        MeshRenderer mrs = GetComponent<MeshRenderer>();
-
-        if (matCols == null)
-            return;
-
-        for (int n = 0; n < mrs.materials.Length; n++)
-        {
-            mrs.materials[n].SetColor("_Color", new Color(matCols[n].r, matCols[n].g , matCols[n].b , matCols[n].a ));
-        }
-    }
-
-
-}
 
 public class loadGallery : MonoBehaviour
 {
@@ -595,10 +512,10 @@ public class loadGallery : MonoBehaviour
     }
 
     public string appName = "UnityApp";
-    public int sceneTypeId = 0x34;
-    public int wallTypeId = 0x01f;
-    public int roomTypeId = 0x35;
-    public int nodeTypeId = 0x08;
+
+
+
+ 
     public string server = "nodix.eu";
     public string address = "BPgb5m5HGtNMXrUX9w1a8FfRE1GdGLM8P4";
     
@@ -609,6 +526,8 @@ public class loadGallery : MonoBehaviour
     public Material selectedSphereMat;
     public Material SphereEditMat;
     public Material defaultSphereMat;
+
+
 
     public Vector2 StartPos = new Vector2(-50.0f, 0.0f);
     public Vector2 Spacing = new Vector2(0.0f, -40.0f);
@@ -630,17 +549,20 @@ public class loadGallery : MonoBehaviour
     private Gallery[] galleries;
     private Room[] rooms;
     private GameObject[] ItemsButton = null;
+    private GameObject[] AvatarsButton = null;
     private GameObject[] GalleriesButton = null;
     private GameObject[] RoomsButton = null;
     private GameObject[] NodesTexts = null;
     private GameObject galleriesAddress;
+    private GameObject avatarPanel;
     private vrRoom room;
     private Nodes nodes;
-
+    private roomUser Me;
 
 
     private itemTable nodesTable;
     private itemTable walletTable;
+    private itemTable avatarTable;
     private GameObject[] Headers;
     private GameObject emptyResult;
     private GameObject roomMenu = null;
@@ -660,21 +582,17 @@ public class loadGallery : MonoBehaviour
     private bool[] canSnap = new bool[2];
     private GameObject floorPlane;
 
-
+    /*
     SaveInfo makeSaveInfos()
     {
         SaveInfo ret;
 
         ret.appName = appName;
         ret.mainKey = wallet.mainKey;
-        ret.nodeTypeId = nodeTypeId;
-        ret.roomTypeId = roomTypeId;
-        ret.wallTypeId = wallTypeId;
-        ret.sceneTypeId = sceneTypeId;
 
         return ret;
     }
-
+    */
 
     // Start is called before the first frame update
     void Start()
@@ -682,13 +600,16 @@ public class loadGallery : MonoBehaviour
         canSnap[0] = true;
         canSnap[1] = true;
 
-        wallet = new Wallet(this);
+        wallet = new Wallet();
         wallet.load();
 
         room = GameObject.Find("Room").GetComponent<vrRoom>();
         room.setECDomain(wallet.domainParams);
 
         nodes = GameObject.Find("Nodes").GetComponent<Nodes>();
+
+        nodes.GetComponent<Nodes>().setRoom(room);
+
 
         floorPlane = GameObject.Find("FloorPlane");
         
@@ -704,6 +625,7 @@ public class loadGallery : MonoBehaviour
 
         nodesTable = new itemTable(new string[] { "adress", "ip", "port", "ping" }, 40.0f);
         walletTable = new itemTable(new string[] { "label", "adress", "owner" }, 65.0f);
+        avatarTable = new itemTable(new string[] { "label", "adress", "owner" }, 65.0f);
 
         if (selectedSphereMat != null)
         {
@@ -723,6 +645,13 @@ public class loadGallery : MonoBehaviour
         MenuItems[3].GetComponentInChildren<Button>().onClick.AddListener(() => WalletMenuClicked());
 
         StartCoroutine(loadRooms());
+
+        Me = new roomUser();
+        Me.name = "mon nom";
+        Me.pkey = wallet.mainKey.getPub().Q.GetEncoded(true);
+        Me.pos = Camera.main.transform.position;
+        Me.rot = Camera.main.transform.rotation;
+        Me.avatar = new byte[32];
 
         /*StartCoroutine(wallet.getnodepriv("BitAdmin", "B8mPBEg2XbYSUwEh5a7yrfehvMNijpAm1P"));*/
     }
@@ -753,6 +682,19 @@ public class loadGallery : MonoBehaviour
             newAddr = null;
         }
 
+        if(avatarPanel != null)
+        {
+            Destroy(avatarPanel);
+            avatarPanel = null;
+        }
+        if (selectedAvatar != null)
+        {
+            Destroy(selectedAvatar);
+            selectedAvatar = null;
+        }
+            
+
+
         if (GalleriesButton != null)
         {
             for (int n = 0; n < GalleriesButton.Length; n++)
@@ -769,6 +711,14 @@ public class loadGallery : MonoBehaviour
                 Destroy(RoomsButton[n]);
             }
             RoomsButton = null;
+        }
+        if (AvatarsButton != null)
+        {
+            for (int n = 0; n < AvatarsButton.Length; n++)
+            {
+                Destroy(AvatarsButton[n]);
+            }
+            AvatarsButton = null;
         }
 
         if (ItemsButton != null)
@@ -842,6 +792,13 @@ public class loadGallery : MonoBehaviour
 
         roomMenu = Instantiate(Resources.Load("Room Menu")) as GameObject;
 
+        if (!Nodes.isNullHash(Me.avatar))
+        {
+            loadAvatar();
+        }
+            
+
+
         var panel = GameObject.Find("Panel");
         var newButton = roomMenu.transform.Find("New Button");
         var saveButton = roomMenu.transform.Find("Save Button");
@@ -851,13 +808,14 @@ public class loadGallery : MonoBehaviour
         roomName.GetComponent<InputField>().text = room.roomName;
 
         newButton.GetComponent<Button>().onClick.AddListener(() => room.newRoom());
-        saveButton.GetComponent<Button>().onClick.AddListener(() => room.saveAllScenes(makeSaveInfos()));
+        saveButton.GetComponent<Button>().onClick.AddListener(() => room.saveAllScenes(wallet.mainKey));
         editButton.GetComponent<Button>().onClick.AddListener(() => room.roomEditor());
         roomName.GetComponent<InputField>().onValueChanged.AddListener(room.setName);
 
         roomMenu.transform.SetParent(panel.transform, false);
 
         StartCoroutine(loadRooms());
+        StartCoroutine(loadAvatars());
     }
 
     void GalleryMenuClicked() {
@@ -1227,10 +1185,102 @@ public class loadGallery : MonoBehaviour
         }
     }
 
+    IEnumerator loadAvatars()
+    {
+        string myAddr = galleriesAddress.GetComponentInChildren<InputField>().text;
+        string URL = "http://" + server + baseURL + "/objlst/" + room.avatarTypeId.ToString(); // + "/" + myAddr;
+
+        Debug.Log("load Avatars " + URL);
+
+        UnityWebRequest webRequest = UnityWebRequest.Get(URL);
+
+        // Request and wait for the desired page.
+        yield return webRequest.SendWebRequest();
+
+        switch (webRequest.result)
+        {
+            case UnityWebRequest.Result.ConnectionError:
+            case UnityWebRequest.Result.DataProcessingError:
+                Debug.Log("Avatar LIST  " + myAddr + " : Error: " + webRequest.error);
+                break;
+            case UnityWebRequest.Result.ProtocolError:
+                Debug.Log("Avatar LIST  " + myAddr + " : HTTP Error: " + webRequest.error);
+                break;
+            case UnityWebRequest.Result.Success:
+
+                float itemX, itemY;
+
+
+                Destroy(emptyResult);
+                if (AvatarsButton != null)
+                {
+                    for (int n = 0; n < AvatarsButton.Length; n++)
+                    {
+                        Destroy(AvatarsButton[n]);
+                    }
+                }
+
+                Avatar[] avatars = ParseJsonArray<Avatar[]>(webRequest.downloadHandler.text);
+
+                if (avatars != null)
+                {
+                    AvatarsButton = new GameObject[avatars.Length];
+
+                    itemX = ItemsStartPos[0];
+                    itemY = ItemsStartPos[1];
+
+                    for (int n = 0; n < avatars.Length; n++)
+                    {
+                        string itemHash = avatars[n].obj.objHash;
+                        int locn = n;
+                        AvatarsButton[n] = Instantiate(Resources.Load("ButtonRoom")) as GameObject;
+                        AvatarsButton[n].transform.position = new Vector3(itemX, itemY, 0.0f);
+                        AvatarsButton[n].transform.SetParent(contentPanel.transform, false);
+                        
+                        if (Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(Me.avatar) == itemHash)
+                        {
+                            AvatarsButton[n].AddComponent<Outline>();
+                            AvatarsButton[n].GetComponent<Outline>().effectColor = new Color(255, 0, 0, 255);
+                            AvatarsButton[n].GetComponent<Outline>().effectDistance = new Vector2(2, 2);
+                        }
+
+                        AvatarsButton[n].GetComponentInChildren<Text>().text = avatars[n].name;
+                        AvatarsButton[n].name = "avatar " + avatars[n].name;
+
+                        AvatarsButton[n].GetComponent<Button>().onClick.AddListener(() => selectAvatar(itemHash, locn));
+
+                        itemX += ItemsSpacing[0];
+
+                        if (itemX >= 3.0f * ItemsSpacing[0])
+                        {
+                            itemY += ItemsSpacing[1];
+                            itemX = ItemsStartPos[0];
+                        }
+                    }
+                }
+                else
+                {
+                    if (emptyResult != null)
+                        Destroy(emptyResult);
+
+                    emptyResult = new GameObject();
+                    emptyResult.AddComponent<Text>().text = "no avatars";
+                    emptyResult.GetComponent<Text>().font = textFont;
+                    emptyResult.GetComponent<Text>().alignment = TextAnchor.MiddleCenter;
+
+                    emptyResult.transform.position = new Vector3(ItemsStartPos[0], StartPos[1], 0.0f);
+                    emptyResult.transform.localScale = new Vector3(0.4f, 1.0f, 1.0f);
+
+                    emptyResult.transform.SetParent(contentPanel.transform, false);
+                }
+                break;
+        }
+    }
+
     IEnumerator loadRooms()
     {
         string myAddr = galleriesAddress.GetComponentInChildren<InputField>().text;
-        string URL = "http://" + server + baseURL + "/objlst/" + roomTypeId.ToString() + "/" + myAddr;
+        string URL = "http://" + server + baseURL + "/objlst/" + room.roomTypeId.ToString() + "/" + myAddr;
 
         Debug.Log("load Rooms " + URL);
 
@@ -1254,11 +1304,11 @@ public class loadGallery : MonoBehaviour
 
                
                 Destroy(emptyResult);
-                if (ItemsButton != null)
+                if (RoomsButton != null)
                 {
-                    for (int n = 0; n < ItemsButton.Length; n++)
+                    for (int n = 0; n < RoomsButton.Length; n++)
                     {
-                        Destroy(ItemsButton[n]);
+                        Destroy(RoomsButton[n]);
                     }
                 }
 
@@ -1266,7 +1316,7 @@ public class loadGallery : MonoBehaviour
 
                 if (rooms != null) 
                 {
-                    ItemsButton = new GameObject[rooms.Length];
+                    RoomsButton = new GameObject[rooms.Length];
 
                     itemX = ItemsStartPos[0];
                     itemY = ItemsStartPos[1];
@@ -1274,14 +1324,14 @@ public class loadGallery : MonoBehaviour
                     for (int n = 0; n < rooms.Length; n++)
                     {
                         string itemHash = rooms[n].objHash;
-                        ItemsButton[n] = Instantiate(Resources.Load("ButtonRoom")) as GameObject;
-                        ItemsButton[n].transform.position = new Vector3(itemX, itemY, 0.0f);
-                        ItemsButton[n].transform.SetParent(contentPanel.transform, false);
+                        RoomsButton[n] = Instantiate(Resources.Load("ButtonRoom")) as GameObject;
+                        RoomsButton[n].transform.position = new Vector3(itemX, itemY, 0.0f);
+                        RoomsButton[n].transform.SetParent(indexPanel.transform, false);
 
-                        ItemsButton[n].GetComponentInChildren<Text>().text = rooms[n].name;
-                        ItemsButton[n].name = "room " + rooms[n].name;
+                        RoomsButton[n].GetComponentInChildren<Text>().text = rooms[n].name;
+                        RoomsButton[n].name = "room " + rooms[n].name;
 
-                        ItemsButton[n].GetComponent<Button>().onClick.AddListener(() => RoomClicked(itemHash));
+                        RoomsButton[n].GetComponent<Button>().onClick.AddListener(() => RoomClicked(itemHash));
 
                         itemX += ItemsSpacing[0];
 
@@ -1419,6 +1469,8 @@ public class loadGallery : MonoBehaviour
 
                 room.resetRoom();
 
+                room.roomHash = hash;
+
                 var mroom = JsonUtility.FromJson<Room>(webRequest.downloadHandler.text);
                 if(mroom.objects == null)
                 {
@@ -1454,6 +1506,80 @@ public class loadGallery : MonoBehaviour
         }
     }
 
+    GameObject selectedAvatar;
+    
+    void loadAvatar()
+    {
+        /*
+        byte[] rh = new byte[32];
+        for (int n = 0; n < 32; n++)
+        {
+            rh[n] = Me.avatar[31 - n];
+        }
+        */
+        string URL = "http://" + server + baseURL + "/obj/" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(Me.avatar);
+
+        Debug.Log("loading avatar " + URL);
+
+
+        if (avatarPanel == null)
+        {
+            avatarPanel = Instantiate(Resources.Load("AvatarPanel")) as GameObject;
+            avatarPanel.GetComponent<Canvas>().worldCamera = Camera.main;
+            avatarPanel.GetComponent<Canvas>().planeDistance = 1.0f;
+        }
+
+        if (selectedAvatar != null)
+            Destroy(selectedAvatar);
+
+        selectedAvatar = new GameObject("Avatar " + URL);
+        selectedAvatar.AddComponent<UnityGLTF.GLTFComponent>().GLTFUri = URL;
+        selectedAvatar.GetComponent<UnityGLTF.GLTFComponent>().Collider = UnityGLTF.GLTFSceneImporter.ColliderType.Box;
+        selectedAvatar.GetComponent<UnityGLTF.GLTFComponent>().Timeout = 120;
+        selectedAvatar.transform.SetParent(avatarPanel.transform, false);
+        selectedAvatar.transform.localScale = new Vector3(300.0f, 300.0f, 300.0f);
+
+    }
+
+    void selectAvatar(string hash, int locn)
+    {
+        Debug.Log("avatar " + hash + " selected");
+
+        for (int n = 0; n < AvatarsButton.Length; n++)
+        {
+            if (n == locn)
+            {
+                if (AvatarsButton[n].GetComponent<Outline>())
+                {
+                    Destroy(AvatarsButton[n].GetComponent<Outline>());
+                    Destroy(selectedAvatar);
+                    selectedAvatar = null;
+                    for (int i = 0; i < 32; i++)
+                        Me.avatar[i] = 0;
+                }
+                else
+                {
+                    AvatarsButton[n].AddComponent<Outline>();
+                    AvatarsButton[n].GetComponent<Outline>().effectColor = new Color(255, 0, 0, 255);
+                    AvatarsButton[n].GetComponent<Outline>().effectDistance = new Vector2(2, 2);
+                    Me.avatar = Org.BouncyCastle.Utilities.Encoders.Hex.Decode(hash);
+
+                }
+            }
+            else
+            {
+                Destroy(AvatarsButton[n].GetComponent<Outline>());
+            }
+        }
+
+        if (!Nodes.isNullHash(Me.avatar))
+            loadAvatar();
+        else if (avatarPanel != null) {
+            Destroy(avatarPanel);
+            avatarPanel = null;
+        }
+
+    }
     void RoomClicked(string hash)
     {
         Debug.Log("room " + hash + " selected");
@@ -1469,6 +1595,21 @@ public class loadGallery : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
+        bool moved = false;
+
+        if (NodesAdd != null)
+        {
+            string sync = nodes.getBlockSync();
+            if (sync != null)
+            {
+                var SyncText = NodesAdd.transform.Find("Sync Text").gameObject;
+                SyncText.GetComponent<Text>().text = sync;
+            }
+        }
+
+        if (selectedAvatar != null)
+            selectedAvatar.transform.Rotate(0, 100 * Time.deltaTime, 0);
+
 
         if (room.isEditingWall())
             return;
@@ -1522,6 +1663,7 @@ public class loadGallery : MonoBehaviour
             currentRotation.x = Mathf.Repeat(currentRotation.x, 360);
             currentRotation.y = Mathf.Clamp(currentRotation.y, -maxYAngle, maxYAngle);
             Cam.transform.rotation = Quaternion.Euler(currentRotation.y, currentRotation.x, 0);
+            moved = true;
         }
 
         Vector3 dir = Cam.transform.rotation * Vector3.forward;
@@ -1533,18 +1675,22 @@ public class loadGallery : MonoBehaviour
         if (Input.GetKey("up"))
         {
             Cam.transform.position += dir * Time.deltaTime * speed;
+            moved = true;
         }
         if (Input.GetKey("down"))
         {
             Cam.transform.position -= dir * Time.deltaTime * speed;
+            moved = true;
         }
         if (Input.GetKey("left"))
         {
             Cam.transform.position -= dir2 * Time.deltaTime * speed;
+            moved = true;
         }
         if (Input.GetKey("right"))
         {
             Cam.transform.position += dir2 * Time.deltaTime * speed;
+            moved = true;
         }
         
         int layerMask = LayerMask.GetMask("Default") | LayerMask.GetMask("Walls");
@@ -1555,6 +1701,18 @@ public class loadGallery : MonoBehaviour
         {
             //Output all of the collider names
             Cam.transform.position = new Vector3(lastPos.x, lastPos.y, lastPos.z);
+        }
+
+        if ((room.roomHash!= null) && (moved))
+        {
+            //StartCoroutine(room.SendAvatarPosMessage(wallet.mainKey, "myName", selectedAvatarHash, Cam.transform.position, Cam.transform.rotation));
+
+            Me.pos = Cam.transform.position;
+            Me.rot = Quaternion.Euler(0, Cam.transform.rotation.eulerAngles.y, 0); ;
+
+
+
+            nodes.sendroomUserTx(Me, wallet.mainKey, wallet.domainParams);
         }
     }
 }
