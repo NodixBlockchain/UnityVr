@@ -22,7 +22,7 @@ using Org.BouncyCastle.Math;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.Networking;
-
+using Unity.XR.CoreUtils;
 
 
 /*using FASTER.core;*/
@@ -856,7 +856,7 @@ public class loadGallery : MonoBehaviour
     void showRoomUsers()
     {
 
-        indexPanel.GetComponent<GridLayoutGroup>().cellSize = new Vector2(70.0f, 20.0f);
+        indexPanel.GetComponent<GridLayoutGroup>().cellSize = new Vector2(80.0f, 20.0f);
 
         var panel = GameObject.Find("Panel");
 
@@ -1678,6 +1678,33 @@ public class loadGallery : MonoBehaviour
         }
 
     }
+
+    void updateRoomUsers() { 
+
+        if(RoomsButton != null)
+        {
+            for (int n = 0; n<RoomsButton.Length; n++)
+            {
+                Destroy(RoomsButton[n]);
+            }
+        }
+
+        RoomsButton = new GameObject[room.users.Count + 1];
+
+        RoomsButton[0] = new GameObject();
+        RoomsButton[0].AddComponent<Text>().text = "#0 " + Me.name;
+        RoomsButton[0].GetComponent<Text>().font = textFont;
+        RoomsButton[0].transform.SetParent(indexPanel.transform, false);
+
+        for (int n = 0; n < room.users.Count; n++)
+        {
+            RoomsButton[n + 1] = new GameObject();
+            RoomsButton[n + 1].AddComponent<Text>().text = "#" + (n + 1).ToString() + " " + room.users[n].name;
+            RoomsButton[n + 1].GetComponent<Text>().font = textFont;
+            RoomsButton[n + 1].transform.SetParent(indexPanel.transform, false);
+        }
+    }
+
     
 
     // Update is called once per frame
@@ -1757,82 +1784,71 @@ public class loadGallery : MonoBehaviour
         currentRotation.y = Mathf.Clamp(currentRotation.y, -maxYAngle, maxYAngle);
         Cam.transform.rotation = Quaternion.Euler(currentRotation.y, currentRotation.x, 0);
 
-        Vector3 dir = Cam.transform.rotation * Vector3.forward;
-        dir.y = 0.0f;
-        Vector3 dir2 = Quaternion.Euler(0.0f, 90.0f, 0.0f) * dir;
-        Vector3 lastPos;
 
-        lastPos = new Vector3(Cam.transform.position.x, Cam.transform.position.y, Cam.transform.position.z);
-        if (Input.GetKey("up"))
+        if (!room.hasHMD())
         {
-            Cam.transform.position += dir * Time.deltaTime * speed;
-            moved = true;
+            Vector3 dir = Cam.transform.rotation * Vector3.forward;
+            dir.y = 0.0f;
+            Vector3 dir2 = Quaternion.Euler(0.0f, 90.0f, 0.0f) * dir;
+            Vector3 lastPos;
+
+            Vector3 totalDir = new Vector3();
+
+            totalDir.y = -0.97f * Time.deltaTime;
+
+            lastPos = new Vector3(Cam.transform.position.x, Cam.transform.position.y, Cam.transform.position.z);
+            if (Input.GetKey("up"))
+            {
+                totalDir += dir * Time.deltaTime * speed;
+                moved = true;
+            }
+            if (Input.GetKey("down"))
+            {
+                totalDir -= dir * Time.deltaTime * speed;
+                moved = true;
+            }
+            if (Input.GetKey("left"))
+            {
+                totalDir -= dir2 * Time.deltaTime * speed;
+                moved = true;
+            }
+            if (Input.GetKey("right"))
+            {
+                totalDir += dir2 * Time.deltaTime * speed;
+                moved = true;
+            }
+            Cam.GetComponent<CharacterController>().Move(totalDir);
+            lock (lockme)
+            {
+                Me.pos = new Vector3(Cam.transform.position.x, Cam.transform.position.y-0.6f, Cam.transform.position.z);
+                Me.rot = Quaternion.Euler(0.0f, Cam.transform.rotation.eulerAngles.y + 180.0f, 0.0f);
+            }
         }
-        if (Input.GetKey("down"))
+        else
         {
-            Cam.transform.position -= dir * Time.deltaTime * speed;
-            moved = true;
+            var Rig = GameObject.Find("XR Rig");
+            float offset = Rig.GetComponent<XROrigin>().CameraYOffset;
+
+            lock (lockme)
+            {
+                Me.pos = new Vector3(Cam.transform.position.x, Cam.transform.position.y- 0.8f, Cam.transform.position.z);
+                Me.rot = Quaternion.Euler(0.0f, Cam.transform.rotation.eulerAngles.y + 180.0f, 0.0f);
+            }
         }
-        if (Input.GetKey("left"))
-        {
-            Cam.transform.position -= dir2 * Time.deltaTime * speed;
-            moved = true;
-        }
-        if (Input.GetKey("right"))
-        {
-            Cam.transform.position += dir2 * Time.deltaTime * speed;
-            moved = true;
-        }
+
         
-        lock (lockme)
-        {
-            Me.pos = new Vector3(Cam.transform.position.x, Cam.transform.position.y, Cam.transform.position.z);
-            Me.rot = Quaternion.Euler(0.0f, Cam.transform.rotation.eulerAngles.y + 180.0f, 0.0f);
-        }
 
-        int layerMask = LayerMask.GetMask("Default") | LayerMask.GetMask("Walls");
 
-        Collider[] hitColliders = Physics.OverlapBox(Cam.transform.position, Cam.transform.localScale / 2, Quaternion.identity, layerMask);
-        //Check when there is a new collider coming into contact with the box
-        if(hitColliders.Length>0)
-        {
-            //Output all of the collider names
-            Cam.transform.position = new Vector3(lastPos.x, lastPos.y, lastPos.z);
-        }
 
+     
 
 
         if ((room.roomHash!= null) &&(room.isLoaded()))
         {
             if(selectedMenu == 1)
             {
-                if(RoomsButton != null)
-                {
-                    for (int n = 0; n < RoomsButton.Length; n++)
-                    {
-                        Destroy(RoomsButton[n]);
-                    }
-                }
-
-                RoomsButton = new GameObject[room.users.Count +1];
-
-                RoomsButton[0] = new GameObject();
-                RoomsButton[0].AddComponent<Text>().text = "#0 " + Me.name;
-                RoomsButton[0].GetComponent<Text>().font = textFont;
-                RoomsButton[0].transform.SetParent(indexPanel.transform, false);
-
-                for (int n = 0; n < room.users.Count; n++)
-                {
-                    RoomsButton[n + 1] = new GameObject();
-                    RoomsButton[n + 1].AddComponent<Text>().text = "#" + (n+1).ToString() +" "+ room.users[n].name;
-                    RoomsButton[n + 1].GetComponent<Text>().font = textFont;
-                    RoomsButton[n + 1].transform.SetParent(indexPanel.transform, false);
-                }
+                updateRoomUsers();
             }
-
-            
-           
-            
 
         }
     }

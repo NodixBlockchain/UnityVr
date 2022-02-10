@@ -447,9 +447,9 @@ public class vrRoom : MonoBehaviour
                 }
                 else if(users[n].AvatarObj)
                 {
-                    users[n].AvatarObj.transform.position = new Vector3(user.pos.x, 0.75f, user.pos.z); ;
+                    users[n].AvatarObj.transform.position = new Vector3(user.pos.x, user.pos.y, user.pos.z); ;
                     users[n].AvatarObj.transform.rotation = new Quaternion(user.rot.x, user.rot.y, user.rot.z, user.rot.w);
-                    users[n].AvatarObj.transform.localScale = new Vector3(1.5f, 1.5f, 1.5f); ;
+                    users[n].AvatarObj.transform.localScale = new Vector3(2.0f, 2.0f, 2.0f); ;
                 }
                 return;
             }
@@ -993,7 +993,7 @@ public class vrRoom : MonoBehaviour
         CreateWalls = false;
     }
 
-    bool hasHMD()
+    public bool hasHMD()
     {
         var HMDControllers = new List<UnityEngine.XR.InputDevice>();
         var desiredCharacteristics = UnityEngine.XR.InputDeviceCharacteristics.HeadMounted;
@@ -1619,6 +1619,9 @@ public class vrRoom : MonoBehaviour
         roomFloor.GetComponent<MeshFilter>().mesh = mesh;
         roomFloor.AddComponent<MeshCollider>().sharedMesh = mesh;
         roomFloor.AddComponent<TeleportationArea>();
+        //roomFloor.layer = 6;
+
+        
 
         roomFloor.transform.position = new Vector3(0.0f, 0.0f, 0.0f);
 
