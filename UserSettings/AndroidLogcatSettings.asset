@@ -1,9 +1,9 @@
 {
-    "m_SelectedDeviceId": "RFCNC06K6GE",
+    "m_SelectedDeviceId": "1WMHH84A091283",
     "m_SelectedPackage": {
-        "deviceId": "RFCNC06K6GE",
+        "deviceId": "1WMHH84A091283",
         "name": "com.Nodix.NodixVr",
-        "processId": 25630,
+        "processId": 30813,
         "exited": false
     },
     "m_SelectedPriority": 0,
@@ -36,6 +36,48 @@
             "deviceId": "RFCNC06K6GE",
             "name": "com.Nodix.NodixVr",
             "processId": 25630,
+            "exited": false
+        },
+        {
+            "deviceId": "1WMHH84A091283",
+            "name": "com.oculus.shellenv",
+            "processId": 1856,
+            "exited": false
+        },
+        {
+            "deviceId": "1WMHH84A091283",
+            "name": "com.Nodix.NodixVr",
+            "processId": 9584,
+            "exited": true
+        },
+        {
+            "deviceId": "1WMHH84A091283",
+            "name": "com.Nodix.NodixVr",
+            "processId": 10841,
+            "exited": true
+        },
+        {
+            "deviceId": "1WMHH84A091283",
+            "name": "com.Nodix.NodixVr",
+            "processId": 11986,
+            "exited": true
+        },
+        {
+            "deviceId": "1WMHH84A091283",
+            "name": "com.Nodix.NodixVr",
+            "processId": 16282,
+            "exited": true
+        },
+        {
+            "deviceId": "1WMHH84A091283",
+            "name": "com.Nodix.NodixVr",
+            "processId": 27121,
+            "exited": true
+        },
+        {
+            "deviceId": "1WMHH84A091283",
+            "name": "com.Nodix.NodixVr",
+            "processId": 30813,
             "exited": false
         }
     ],

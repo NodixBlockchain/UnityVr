@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 
 
@@ -37,7 +38,13 @@ public struct messageAddr
     public ushort port;
 }
 
-
+public struct messageAddrT
+{
+    public uint time;
+    public ulong services;
+    public IPAddress ip;
+    public ushort port;
+}
 public struct messageVersion
 {
     public uint proto_ver;
@@ -53,6 +60,11 @@ public struct messageVersion
 public struct messagePing
 {
     public ulong nonce;
+}
+
+public struct messageAddrs
+{
+    public messageAddrT[] addrs;
 }
 
 public struct messagePong
@@ -91,6 +103,15 @@ public struct TransactionOutput
 {
     public ulong amount;
     public byte[] script;
+}
+
+public struct TxInfos
+{
+    public NodixApplication app;
+    public int item;
+    public appObj child;
+    public appObj childOf;
+    public appObj obj;
 }
 public struct Tx
 {
@@ -359,7 +380,33 @@ public class Node
 
         return addr;
     }
+    
+    messageAddrT readADDRT(BinaryReader reader)
+    {
+        messageAddrT addr = new messageAddrT();
+        byte[] ipc, port;
 
+        addr.time = reader.ReadUInt32();
+        addr.services = reader.ReadUInt64();
+
+        ipc = reader.ReadBytes(16);
+        if ((ipc[10] == 0xFF) && (ipc[11] == 0xFF))
+        {
+            byte[] ip = new byte[4];
+
+            ip[0] = ipc[12];
+            ip[1] = ipc[13];
+            ip[2] = ipc[14];
+            ip[3] = ipc[15];
+            addr.ip = new IPAddress(ip);
+        }
+
+        port = reader.ReadBytes(2);
+        addr.port = (ushort)((port[0] << 8) | port[1]);
+
+
+        return addr;
+    }
     void writeADDR(messageAddr addr, BinaryWriter writer)
     {
         byte[] ipc, ip, port;
@@ -390,377 +437,6 @@ public class Node
         writer.Write(port);
     }
 
-    private void ReceiveVersionCallback(IAsyncResult ar)
-    {
-        try
-        {
-            // Retrieve the state object and the client socket
-            MessageState version = (MessageState)ar.AsyncState;
-
-            int bytesRead = client.EndReceive(ar);
-            if (bytesRead <= 0)
-            {
-                Debug.Log("ReceiveVersionCallback error ");
-                return;
-            }
-
-            version.writer.Write(version.buffer, 0, bytesRead);
-
-            if (version.m.Length >= version.hdr.size)
-            {
-                
-                var reader = new BinaryReader(version.m);
-                version.m.Position = 0;
-
-                byte[] hash = Nodes.Hashd(version.m.GetBuffer(), (int)version.hdr.size);
-                uint sum = (uint)(hash[0] | (hash[1] << 8) | (hash[2] << 16) | (hash[3] << 24));
-
-                if (version.hdr.sum != sum)
-                {
-                    Debug.Log("wrong version sum " + version.m.GetBuffer().Length + " " + version.hdr.sum.ToString("X8") + " " + sum.ToString("X8") + " " + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(hash));
-                }
-
-                ver.proto_ver = reader.ReadUInt32();
-                ver.services = reader.ReadUInt64();
-                ver.timestamp = reader.ReadUInt64();
-                ver.myAddr = readADDR(reader);
-                ver.theirAddr = readADDR(reader);
-                ver.nonce = reader.ReadUInt64();
-
-                
-
-                long ual = Nodes.readVINT(reader);
-
-                StringBuilder sb = new StringBuilder();
-                char[] user_agent = reader.ReadChars((int)ual);
-                for (int n = 0; n < ual && user_agent[n] != 0; n++)
-                {
-                    sb.Append(user_agent[n]);
-                }
-                ver.user_agent = sb.ToString();
-                ver.last_blk = reader.ReadUInt32();
-
-
-                hasVer = true;
-
-                Debug.Log("version message " + ver.proto_ver + " " + ver.user_agent + " " + ver.last_blk);
-
-            }
-        }
-        catch (Exception e)
-        {
-            Debug.Log(e.ToString());
-        }
-
-
-    }
-
-    
-    private void ReceiveHeadersCallBack(IAsyncResult ar)
-    {
-        
-        try
-        {
-            recvHDR = false;
-
-            // Retrieve the state object and the client socket
-            MessageState hdrs = (MessageState)ar.AsyncState;
-            int bytesRead = client.EndReceive(ar);
-            if (bytesRead <= 0)
-            {
-                Debug.Log("ReceiveHeadersCallBack error ");
-                return;
-            }
-
-            hdrs.writer.Write(hdrs.buffer, 0, bytesRead);
-
-            if (hdrs.m.Length >= hdrs.hdr.size)
-            {
-                var reader = new BinaryReader(hdrs.m);
-                long count;
-                hdrs.m.Position = 0;
-
-                count = Nodes.readVINT(reader);
-
-                for (int n = 0; n < count; n++)
-                {
-                    byte[] hdrBytes = reader.ReadBytes(80);
-                    blockheader myhdr = Nodes.BytestoHDR(hdrBytes);
-                    myhdr.nTx = (uint)Nodes.readVINT(reader);
-                    myhdr.isPow = (reader.ReadByte() == 1) ? true : false;
-
-                    lock (_blkLock)
-                    {
-                        RecvHeaders.Add(myhdr);
-                    }
-                }
-
-
-                Debug.Log("get headers message ");
-            }
-        }
-        catch (Exception e)
-        {
-            Debug.Log(e.ToString());
-            return;
-        }
-    }
-    
-    private void ReceiveHeaders(messageHDR hdr)
-    {
-        // Create the state object.  
-        MessageState msg = new MessageState(hdr);
-        // Begin receiving the data from the remote device.  
-        client.BeginReceive(msg.buffer, 0, msg.BufferSize, 0, new AsyncCallback(ReceiveHeadersCallBack), msg);
-    }
-    private void ReceiveInventoryCallBack(IAsyncResult ar)
-    {
-
-        try
-        {
-           
-
-            // Retrieve the state object and the client socket
-            MessageState inv = (MessageState)ar.AsyncState;
-            int bytesRead = client.EndReceive(ar);
-            if (bytesRead <= 0)
-            {
-                Debug.Log("ReceiveHeadersCallBack error ");
-                return;
-            }
-
-            inv.writer.Write(inv.buffer, 0, bytesRead);
-
-            if (inv.m.Length >= inv.hdr.size)
-            {
-                var reader = new BinaryReader(inv.m);
-                long count;
-                inv.m.Position = 0;
-
-                count = Nodes.readVINT(reader);
-
-                //messageInventory inventory= new messageInventory(count);
-
-                for (int n = 0; n < count; n++)
-                {
-                    messageInventoryHash h = new messageInventoryHash();
-                    h.type = reader.ReadUInt32();
-                    h.hash = reader.ReadBytes(32);
-                    lock(_invLock)
-                    {
-                        inventory.Add(h);
-                    }
-                }
-
-
-                
-
-                Debug.Log("get inv message ");
-            }
-        }
-        catch (Exception e)
-        {
-            Debug.Log(e.ToString());
-            return;
-        }
-    }
-
-    private void ReceiveInventory(messageHDR hdr)
-    {
-        // Create the state object.  
-        MessageState msg = new MessageState(hdr);
-        // Begin receiving the data from the remote device.  
-        client.BeginReceive(msg.buffer, 0, msg.BufferSize, 0, new AsyncCallback(ReceiveInventoryCallBack), msg);
-    }
-
-    private void ReceiveTxCallBack(IAsyncResult ar)
-    {
-
-        try
-        {
-
-
-            // Retrieve the state object and the client socket
-            MessageState tx = (MessageState)ar.AsyncState;
-            int bytesRead = client.EndReceive(ar);
-            if (bytesRead <= 0)
-            {
-                Debug.Log("ReceiveHeadersCallBack error ");
-                return;
-            }
-
-            tx.writer.Write(tx.buffer, 0, bytesRead);
-
-            if (tx.m.Length >= tx.hdr.size)
-            {
-                var reader = new BinaryReader(tx.m);
-                tx.m.Position = 0;
-
-                byte[] h1 = Nodes.Hashd(tx.m.GetBuffer(), bytesRead);
-
-                Tx transaction = Nodes.BytestoTX(tx.m.GetBuffer());
-                transaction.hash = Nodes.Hash(Nodes.Hash(Nodes.TXtoBytes(transaction)));
-
-                lock (_txLock)
-                {
-                    RecvTransactions.Add(transaction);
-                }
-
-
-                Debug.Log("get tx message " + Org.BouncyCastle.Utilities.Encoders.Hex.Encode(transaction.hash));
-            }
-        }
-        catch (Exception e)
-        {
-            Debug.Log(e.ToString());
-            return;
-        }
-    }
-
-    private void ReceiveTx(messageHDR hdr)
-    {
-        // Create the state object.  
-        MessageState msg = new MessageState(hdr);
-        // Begin receiving the data from the remote device.  
-        client.BeginReceive(msg.buffer, 0, msg.BufferSize, 0, new AsyncCallback(ReceiveTxCallBack), msg);
-    }
-
-    
-    private void ReceivePongCallback(IAsyncResult ar)
-    {
-        messagePong Pong = new messagePong();
-
-        try
-        {
-            // Retrieve the state object and the client socket
-            MessageState pong = (MessageState)ar.AsyncState;
-            int bytesRead = client.EndReceive(ar);
-            if (bytesRead <= 0)
-            {
-                Debug.Log("ReceivePingCallback error ");
-                return;
-            }
-
-
-
-
-            pong.writer.Write(pong.buffer, 0, bytesRead);
-
-            if (pong.m.Length >= pong.hdr.size)
-            {
-                var reader = new BinaryReader(pong.m);
-                pong.m.Position = 0;
-                Pong.nonce = reader.ReadUInt64();
-
-                if(Pong.nonce != lastPingNonce)
-                {
-                    Debug.Log("pong nonce mismatch " + Pong.nonce + "!=" + lastPingNonce);
-                }
-
-                pingTime = System.DateTimeOffset.Now.ToUnixTimeMilliseconds() - lastPingTime;
-
-                waitPong = false;
-
-                
-
-                Debug.Log("Pong message " + pingTime);
-            }
-        }
-        catch (Exception e)
-        {
-            Debug.Log(e.ToString());
-            return;
-        }
-
-        
-    }
-    private void ReceivePingCallback(IAsyncResult ar)
-    {
-        messagePing Ping = new messagePing();
-
-        try
-        {
-            // Retrieve the state object and the client socket
-            MessageState ping = (MessageState)ar.AsyncState;
-            int bytesRead = client.EndReceive(ar);
-            if (bytesRead <= 0)
-            {
-                Debug.Log("ReceivePingCallback error ");
-                return;
-            }
-
-            ping.writer.Write(ping.buffer, 0, bytesRead);
-
-            if (ping.m.Length >= ping.hdr.size)
-            {
-                var reader = new BinaryReader(ping.m);
-                ping.m.Position = 0;
-                Ping.nonce = reader.ReadUInt64();
-                Debug.Log("Ping message " + Ping.nonce);
-            }
-        }
-        catch (Exception e)
-        {
-            Debug.Log(e.ToString());
-            return;
-        }
-
-        SendPongMessage(Ping.nonce);
-    }
-    
-    private void ReceivePing(messageHDR hdr)
-    {
-        // Create the state object.  
-        MessageState msg = new MessageState(hdr);
-
-        // Begin receiving the data from the remote device.  
-        client.BeginReceive(msg.buffer, 0, msg.BufferSize, 0, new AsyncCallback(ReceivePingCallback), msg);
-    }
-
-    private void ReceivePong(messageHDR hdr)
-    {
-        // Create the state object.  
-        MessageState msg = new MessageState(hdr);
-
-        // Begin receiving the data from the remote device.  
-        client.BeginReceive(msg.buffer, 0, msg.BufferSize, 0, new AsyncCallback(ReceivePongCallback), msg);
-    }
-
-
-    private messageHDR createHDR(string cmd, MemoryStream m)
-    {
-        messageHDR hdr;
-
-        byte[] hash = Nodes.Hashd(m.GetBuffer(), (int)m.Position);
-
-        hdr.magic = 0xD9BEFECA;
-        hdr.cmd = cmd;
-        hdr.size = (uint)m.Position;
-        hdr.sum = (uint)(hash[0] | (hash[1] << 8) | (hash[2] << 16) | (hash[3] << 24));
-        return hdr;
-    }
-
-    private byte[] createMessageBuffer(string cmd, MemoryStream payload)
-    {
-        messageHDR hdr = createHDR(cmd, payload);
-        MemoryStream buffer = new MemoryStream();
-        BinaryWriter writer = new BinaryWriter(buffer);
-        char[] bcmd = cmd.ToCharArray();
-        char[] ccmd = new char[12];
-
-        bcmd.CopyTo(ccmd, 0);
-
-        writer.Write(hdr.magic);
-        writer.Write(ccmd);
-        writer.Write(hdr.size);
-        writer.Write(hdr.sum);
-
-        if (payload.Position > 0)
-            writer.Write(payload.GetBuffer());
-
-        return buffer.GetBuffer();
-
-    }
 
     private void SendCallback(IAsyncResult ar)
     {
@@ -778,7 +454,7 @@ public class Node
     }
 
 
-    private void SendPongMessage( ulong nonce)
+    private void SendPongMessage(ulong nonce)
     {
         messagePong pong = new messagePong();
         pong.nonce = nonce;
@@ -811,7 +487,7 @@ public class Node
         client.BeginSend(messageBuffer, 0, (int)(24 + m.Position), 0, new AsyncCallback(SendCallback), client);
     }
 
-    public void SendGetHeadersMessage(List <byte[]> hdrs) 
+    public void SendGetHeadersMessage(List<byte[]> hdrs)
     {
         messageGetHeaders gethdr = new messageGetHeaders();
         gethdr.version = 10;
@@ -825,7 +501,7 @@ public class Node
         writer.Write(gethdr.version);
         Nodes.writeVINT((ulong)gethdr.hashes.Count, writer);
 
-        for(int n=0;n < gethdr.hashes.Count;n++)
+        for (int n = 0; n < gethdr.hashes.Count; n++)
         {
             writer.Write(gethdr.hashes[n]);
         }
@@ -878,8 +554,21 @@ public class Node
         client.BeginSend(messageBuffer, 0, (int)(24 + m.Position), 0, new AsyncCallback(SendCallback), client);
     }
 
-    
 
+    public void SendTmppoolMessage()
+    {
+        if (sentMP)
+            return;
+
+        sentMP = true;
+
+        MemoryStream m = new MemoryStream();
+        BinaryWriter writer = new BinaryWriter(m);
+
+        byte[] messageBuffer = createMessageBuffer("tmppool", m);
+
+        client.BeginSend(messageBuffer, 0, (int)(24 + m.Position), 0, new AsyncCallback(SendCallback), client);
+    }
     public void SendMempoolMessage()
     {
         if (sentMP)
@@ -967,8 +656,73 @@ public class Node
         }
     }
 
+    private void ReceiveVersionCallback(IAsyncResult ar)
+    {
+        try
+        {
+            // Retrieve the state object and the client socket
+            MessageState msg = (MessageState)ar.AsyncState;
 
-    private void ReceiveVersion( messageHDR hdr)
+            int bytesRead = client.EndReceive(ar);
+            if (bytesRead <= 0)
+            {
+                Debug.Log("ReceiveVersionCallback error ");
+                return;
+            }
+
+            msg.writer.Write(msg.buffer, 0, bytesRead);
+
+            if (msg.m.Position >= msg.hdr.size)
+            {
+                var reader = new BinaryReader(msg.m);
+                msg.m.Position = 0;
+
+                byte[] hash = Nodes.Hashd(msg.m.GetBuffer(), (int)msg.hdr.size);
+                uint sum = (uint)(hash[0] | (hash[1] << 8) | (hash[2] << 16) | (hash[3] << 24));
+
+                if (msg.hdr.sum != sum)
+                {
+                    Debug.Log("wrong version sum " + msg.m.GetBuffer().Length + " " + msg.hdr.sum.ToString("X8") + " " + sum.ToString("X8") + " " + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(hash));
+                }
+
+                ver.proto_ver = reader.ReadUInt32();
+                ver.services = reader.ReadUInt64();
+                ver.timestamp = reader.ReadUInt64();
+                ver.myAddr = readADDR(reader);
+                ver.theirAddr = readADDR(reader);
+                ver.nonce = reader.ReadUInt64();
+
+                
+
+                long ual = Nodes.readVINT(reader);
+
+                StringBuilder sb = new StringBuilder();
+                char[] user_agent = reader.ReadChars((int)ual);
+                for (int n = 0; n < ual && user_agent[n] != 0; n++)
+                {
+                    sb.Append(user_agent[n]);
+                }
+                ver.user_agent = sb.ToString();
+                ver.last_blk = reader.ReadUInt32();
+
+
+                hasVer = true;
+
+                Debug.Log("version message " + ver.proto_ver + " " + ver.user_agent + " " + ver.last_blk);
+
+                ReceivePacketHDR();
+            }
+            else
+                client.BeginReceive(msg.buffer, 0, (int)(msg.hdr.size- msg.m.Position), 0, new AsyncCallback(ReceiveVersionCallback), msg);
+        }
+        catch (Exception e)
+        {
+            Debug.Log(e.ToString());
+        }
+
+
+    }
+    private void ReceiveVersion(messageHDR hdr)
     {
         // Create the state object.  
         MessageState version = new MessageState(hdr);
@@ -976,6 +730,384 @@ public class Node
         // Begin receiving the data from the remote device.  
         client.BeginReceive(version.buffer, 0, version.BufferSize, 0, new AsyncCallback(ReceiveVersionCallback), version);
     }
+
+
+    private void ReceiveHeadersCallBack(IAsyncResult ar)
+    {
+        
+        try
+        {
+            recvHDR = false;
+
+            // Retrieve the state object and the client socket
+            MessageState msg = (MessageState)ar.AsyncState;
+            int bytesRead = client.EndReceive(ar);
+            if (bytesRead <= 0)
+            {
+                Debug.Log("ReceiveHeadersCallBack error ");
+                return;
+            }
+
+            msg.writer.Write(msg.buffer, 0, bytesRead);
+
+            if (msg.m.Position >= msg.hdr.size)
+            {
+                var reader = new BinaryReader(msg.m);
+                long count;
+                msg.m.Position = 0;
+
+                count = Nodes.readVINT(reader);
+
+                for (int n = 0; n < count; n++)
+                {
+                    byte[] hdrBytes = reader.ReadBytes(80);
+                    blockheader myhdr = Nodes.BytestoHDR(hdrBytes);
+                    myhdr.nTx = (uint)Nodes.readVINT(reader);
+                    myhdr.isPow = (reader.ReadByte() == 1) ? true : false;
+
+                    lock (_blkLock)
+                    {
+                        RecvHeaders.Add(myhdr);
+                    }
+                }
+
+                Debug.Log("get headers message ");
+
+                ReceivePacketHDR();
+            }
+            else
+                client.BeginReceive(msg.buffer, 0, (int)(msg.hdr.size - msg.m.Position), 0, new AsyncCallback(ReceiveHeadersCallBack), msg);
+
+        }
+        catch (Exception e)
+        {
+            Debug.Log(e.ToString());
+            return;
+        }
+    }
+    
+    private void ReceiveHeaders(messageHDR hdr)
+    {
+        // Create the state object.  
+        MessageState msg = new MessageState(hdr);
+        // Begin receiving the data from the remote device.  
+        client.BeginReceive(msg.buffer, 0, msg.BufferSize, 0, new AsyncCallback(ReceiveHeadersCallBack), msg);
+    }
+    private void ReceiveInventoryCallBack(IAsyncResult ar)
+    {
+
+        try
+        {
+           
+
+            // Retrieve the state object and the client socket
+            MessageState msg = (MessageState)ar.AsyncState;
+            int bytesRead = client.EndReceive(ar);
+            if (bytesRead <= 0)
+            {
+                Debug.Log("ReceiveHeadersCallBack error ");
+                return;
+            }
+
+            msg.writer.Write(msg.buffer, 0, bytesRead);
+
+            if (msg.m.Position >= msg.hdr.size)
+            {
+                var reader = new BinaryReader(msg.m);
+                long count;
+                msg.m.Position = 0;
+                string hashstr="";
+
+                count = Nodes.readVINT(reader);
+
+                //messageInventory inventory= new messageInventory(count);
+
+                for (int n = 0; n < count; n++)
+                {
+                    messageInventoryHash h = new messageInventoryHash();
+                    h.type = reader.ReadUInt32();
+                    h.hash = reader.ReadBytes(32);
+
+                    hashstr= hashstr + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(h.hash) + ",";
+
+                    lock (_invLock)
+                    {
+                        inventory.Add(h);
+                    }
+                }
+
+                Debug.Log("get inv message "+ hashstr);
+
+                ReceivePacketHDR();
+            }
+            else
+                client.BeginReceive(msg.buffer, 0, (int)(msg.hdr.size - msg.m.Position), 0, new AsyncCallback(ReceiveInventoryCallBack), msg);
+        }
+        catch (Exception e)
+        {
+            Debug.Log(e.ToString());
+            return;
+        }
+    }
+
+    private void ReceiveInventory(messageHDR hdr)
+    {
+        // Create the state object.  
+        MessageState msg = new MessageState(hdr);
+        // Begin receiving the data from the remote device.  
+        client.BeginReceive(msg.buffer, 0, msg.BufferSize, 0, new AsyncCallback(ReceiveInventoryCallBack), msg);
+    }
+
+    private void ReceiveTxCallBack(IAsyncResult ar)
+    {
+
+        try
+        {
+
+
+            // Retrieve the state object and the client socket
+            MessageState msg = (MessageState)ar.AsyncState;
+            int bytesRead = client.EndReceive(ar);
+            if (bytesRead <= 0)
+            {
+                Debug.Log("ReceiveHeadersCallBack error ");
+                return;
+            }
+
+            msg.writer.Write(msg.buffer, 0, bytesRead);
+
+            if (msg.m.Position >= msg.hdr.size)
+            {
+                var reader = new BinaryReader(msg.m);
+                msg.m.Position = 0;
+
+                Tx transaction = Nodes.BytestoTX(msg.m.GetBuffer());
+                transaction.hash = Nodes.Hash(Nodes.Hash(Nodes.TXtoBytes(transaction)));
+
+                lock (_txLock)
+                {
+                    RecvTransactions.Add(transaction);
+                }
+                ReceivePacketHDR();
+
+                Debug.Log("get tx message " + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(transaction.hash));
+            }
+            else
+                client.BeginReceive(msg.buffer, 0, (int)(msg.hdr.size - msg.m.Position), 0, new AsyncCallback(ReceiveTxCallBack), msg);
+        }
+        catch (Exception e)
+        {
+            Debug.Log(e.ToString());
+            return;
+        }
+    }
+
+    private void ReceiveTx(messageHDR hdr)
+    {
+        // Create the state object.  
+        MessageState msg = new MessageState(hdr);
+        // Begin receiving the data from the remote device.  
+        client.BeginReceive(msg.buffer, 0, msg.BufferSize, 0, new AsyncCallback(ReceiveTxCallBack), msg);
+    }
+
+    
+    private void ReceivePongCallback(IAsyncResult ar)
+    {
+        messagePong Pong = new messagePong();
+
+        try
+        {
+            // Retrieve the state object and the client socket
+            MessageState pong = (MessageState)ar.AsyncState;
+            int bytesRead = client.EndReceive(ar);
+            if (bytesRead <= 0)
+            {
+                Debug.Log("ReceivePingCallback error ");
+                return;
+            }
+
+
+
+
+            pong.writer.Write(pong.buffer, 0, bytesRead);
+
+            if (pong.m.Length >= pong.hdr.size)
+            {
+                var reader = new BinaryReader(pong.m);
+                pong.m.Position = 0;
+                Pong.nonce = reader.ReadUInt64();
+
+                if(Pong.nonce != lastPingNonce)
+                {
+                    Debug.Log("pong nonce mismatch " + Pong.nonce + "!=" + lastPingNonce);
+                }
+
+                pingTime = System.DateTimeOffset.Now.ToUnixTimeMilliseconds() - lastPingTime;
+
+                waitPong = false;
+
+                Debug.Log("Pong message " + pingTime);
+
+                ReceivePacketHDR();
+            }
+        }
+        catch (Exception e)
+        {
+            Debug.Log(e.ToString());
+            return;
+        }
+
+        
+    }
+    private void ReceivePingCallback(IAsyncResult ar)
+    {
+        messagePing Ping = new messagePing();
+
+        try
+        {
+            // Retrieve the state object and the client socket
+            MessageState ping = (MessageState)ar.AsyncState;
+            int bytesRead = client.EndReceive(ar);
+            if (bytesRead <= 0)
+            {
+                Debug.Log("ReceivePingCallback error ");
+                return;
+            }
+
+            ping.writer.Write(ping.buffer, 0, bytesRead);
+
+            if (ping.m.Length >= ping.hdr.size)
+            {
+                var reader = new BinaryReader(ping.m);
+                ping.m.Position = 0;
+                Ping.nonce = reader.ReadUInt64();
+                Debug.Log("Ping message " + Ping.nonce);
+
+                ReceivePacketHDR();
+            }
+        }
+        catch (Exception e)
+        {
+            Debug.Log(e.ToString());
+            return;
+        }
+
+        SendPongMessage(Ping.nonce);
+    }
+    
+    private void ReceivePing(messageHDR hdr)
+    {
+        // Create the state object.  
+        MessageState msg = new MessageState(hdr);
+
+        // Begin receiving the data from the remote device.  
+        client.BeginReceive(msg.buffer, 0, msg.BufferSize, 0, new AsyncCallback(ReceivePingCallback), msg);
+    }
+
+    private void ReceivePong(messageHDR hdr)
+    {
+        // Create the state object.  
+        MessageState msg = new MessageState(hdr);
+
+        // Begin receiving the data from the remote device.  
+        client.BeginReceive(msg.buffer, 0, msg.BufferSize, 0, new AsyncCallback(ReceivePongCallback), msg);
+    }
+    private void ReceiveAddrCallback(IAsyncResult ar)
+    {
+        messageAddrs addrs = new messageAddrs();
+
+        try
+        {
+            // Retrieve the state object and the client socket
+            MessageState msg = (MessageState)ar.AsyncState;
+            int bytesRead = client.EndReceive(ar);
+            if (bytesRead <= 0)
+            {
+                Debug.Log("ReceiveAddrCallback error ");
+                return;
+            }
+
+            msg.writer.Write(msg.buffer, 0, bytesRead);
+
+            if (msg.m.Position >= msg.hdr.size)
+            {
+                var reader = new BinaryReader(msg.m);
+                msg.m.Position = 0;
+
+                long cnt = Nodes.readVINT(reader);
+
+
+                addrs.addrs = new messageAddrT[cnt];
+
+                for(int n=0;n<cnt;n++)
+                {
+                    addrs.addrs[n] = readADDRT(reader);
+                }
+
+                Debug.Log("Addr message " + addrs.addrs[0].ip.ToString()+" "+ addrs.addrs[0].port);
+
+                ReceivePacketHDR();
+            }
+        }
+        catch (Exception e)
+        {
+            Debug.Log(e.ToString());
+            return;
+        }
+
+        
+    }
+
+    private void ReceiveAddr(messageHDR hdr)
+    {
+        try
+        {
+            // Create the state object.  
+            MessageState msg = new MessageState(hdr);
+
+            // Begin receiving the data from the remote device.  
+            client.BeginReceive(msg.buffer, 0, msg.BufferSize, 0, new AsyncCallback(ReceiveAddrCallback), msg);
+        }
+        catch (Exception e)
+        {
+            Debug.Log(e.ToString());
+        }
+    }
+    private messageHDR createHDR(string cmd, MemoryStream m)
+    {
+        messageHDR hdr;
+
+        byte[] hash = Nodes.Hashd(m.GetBuffer(), (int)m.Position);
+
+        hdr.magic = 0xD9BEFECA;
+        hdr.cmd = cmd;
+        hdr.size = (uint)m.Position;
+        hdr.sum = (uint)(hash[0] | (hash[1] << 8) | (hash[2] << 16) | (hash[3] << 24));
+        return hdr;
+    }
+
+    private byte[] createMessageBuffer(string cmd, MemoryStream payload)
+    {
+        messageHDR hdr = createHDR(cmd, payload);
+        MemoryStream buffer = new MemoryStream();
+        BinaryWriter writer = new BinaryWriter(buffer);
+        char[] bcmd = cmd.ToCharArray();
+        char[] ccmd = new char[12];
+
+        bcmd.CopyTo(ccmd, 0);
+
+        writer.Write(hdr.magic);
+        writer.Write(ccmd);
+        writer.Write(hdr.size);
+        writer.Write(hdr.sum);
+
+        if (payload.Position > 0)
+            writer.Write(payload.GetBuffer());
+
+        return buffer.GetBuffer();
+
+    }
+  
 
     private void ReceivePacketHDR()
     {
@@ -994,6 +1126,20 @@ public class Node
     }
 
 
+    private void ReceiveUnknownCallback(IAsyncResult ar)
+    {
+        try
+        {
+            int bytesRead = client.EndReceive(ar);
+            Debug.Log("recv unknown bytes ." + bytesRead);
+
+            ReceivePacketHDR();
+        }
+        catch (Exception e)
+        {
+            Debug.Log(e.ToString());
+        }
+    }
 
     private void ReceiveCallback(IAsyncResult ar)
     {
@@ -1004,11 +1150,13 @@ public class Node
 
             int bytesRead = client.EndReceive(ar);
 
-            if(bytesRead<=0)
+            if (bytesRead<=0)
             {
                 Debug.Log("ReceiveCallback error "+address);
                 return;
             }
+
+            lastPingTime = System.DateTimeOffset.Now.ToUnixTimeMilliseconds() ;
 
             state.writer.Write(state.buffer, 0, bytesRead);
 
@@ -1037,17 +1185,26 @@ public class Node
                 switch (hdr.cmd)
                 {
                     case "version": ReceiveVersion(hdr); SendVerackMessage(); break;
-                    case "mempool": break;
-                    case "getaddr": break;
-                    case "verack":SendPingMessage();break;
+                    case "mempool": ReceivePacketHDR(); break;
+                    case "getaddr": ReceivePacketHDR(); break;
+                    case "verack": ReceivePacketHDR(); SendPingMessage(); break;
                     case "ping": ReceivePing(hdr); break;
                     case "pong": ReceivePong(hdr); break;
                     case "headers": ReceiveHeaders(hdr); break;
                     case "inv": ReceiveInventory(hdr); break;
                     case "tx": ReceiveTx(hdr); break;
-                    default: Debug.Log("unknown message : " + hdr.cmd); break;
+                    case "addr": ReceiveTx(hdr); break;
+                    default: 
+                        Debug.Log("unknown message : " + hdr.cmd);
+
+                        MessageState unk = new MessageState(hdr);
+
+                        client.BeginReceive(unk.buffer, 0, (int)unk.hdr.size, 0, new AsyncCallback(ReceiveVersionCallback), unk);
+
+                        ReceivePacketHDR(); 
+                    break;
                 }
-                ReceivePacketHDR();
+                
             }
 
         }
@@ -1058,6 +1215,14 @@ public class Node
     }
 }
 
+public class appObj
+{
+    public uint type;
+    public byte[] objData;
+    public byte[] pubkey;
+    public byte[] txh;
+
+}
 
 
 public class Nodes : MonoBehaviour
@@ -1073,14 +1238,16 @@ public class Nodes : MonoBehaviour
     public static long nextGetHeaders = 0;
 
     uint block_height = 0;
-    bool recvHDR;
+    bool recvHDR = false;
     bool recvApps = false;
+    bool sendingPos = false;
 
     vrRoom room;
 
 
     Applications apps;
 
+    List<appObj> appObjs;
 
     IBPlusTreeKeyValueStorage<ComparableKeyOf<BigInteger>, ValueOf<blockheader>> blkstorage;
     IBPlusTreeKeyValueStorage<ComparableKeyOf<BigInteger>, ValueOf<Tx>> txstorage;
@@ -1648,12 +1815,10 @@ public class Nodes : MonoBehaviour
         List<byte[]> hash_list;
         uint cnt = 0;
 
-       index = (int)block_height;
-
         hash = new byte[32];
         hash_list = new List<byte[]>();
 
-        for (int cn = 0; index > 1; cn++, index -= step)
+        for (index = (int)block_height; index > 1; index -= step)
         {
             hash = blksIdxtorage.Get((uint)index);
 
@@ -1668,8 +1833,12 @@ public class Nodes : MonoBehaviour
             }
         }
         //  Push the genesis block index.
-        hash = blksIdxtorage.Get(0);
-        hash_list.Add(hash);
+
+        if(blksIdxtorage != null)
+        {
+            hash = blksIdxtorage.Get(0);
+            hash_list.Add(hash);
+        }
 
         return hash_list;
     }
@@ -1711,9 +1880,11 @@ public class Nodes : MonoBehaviour
         byte[] myip = new byte[4];
         myIP = new IPAddress(myip);
 
-        
-        
+
+        appObjs = new List<appObj>();
         scratchpad = new uint[SCRYPT_BUFFER_SIZE];
+
+        sendingPos = false;
 
 
         loadApps();
@@ -1721,9 +1892,14 @@ public class Nodes : MonoBehaviour
         NodesList = new List<Node>();
         NodesList.Add(new Node(seedNodeAdress, seedNodePort, true, myIP));
 
-        System.IO.Directory.CreateDirectory(Application.persistentDataPath + "/blks");
-        System.IO.Directory.CreateDirectory(Application.persistentDataPath + "/blksidx");
-        System.IO.Directory.CreateDirectory(Application.persistentDataPath + "/tx");
+        if(!System.IO.Directory.Exists(Application.persistentDataPath + "/blks"))
+            System.IO.Directory.CreateDirectory(Application.persistentDataPath + "/blks");
+
+        if (!System.IO.Directory.Exists(Application.persistentDataPath + "/blksidx"))
+            System.IO.Directory.CreateDirectory(Application.persistentDataPath + "/blksidx");
+        
+        if (!System.IO.Directory.Exists(Application.persistentDataPath + "/tx"))
+            System.IO.Directory.CreateDirectory(Application.persistentDataPath + "/tx");
 
 
         var settings = BPlusTreeStorageSettings.Default(32); // use default settings with 32-byte keys
@@ -1762,6 +1938,8 @@ public class Nodes : MonoBehaviour
 
         block_height = (uint)blksIdxtorage.Count() - 1;
 
+        nextGetHeaders = System.DateTimeOffset.Now.ToUnixTimeMilliseconds() + 1000;
+
         /*testStore();*/
     }
 
@@ -1777,6 +1955,9 @@ public class Nodes : MonoBehaviour
 
     public static bool isNullHash(byte[] h)
     {
+        if (h == null)
+            return true;
+
         if (compareHash(h, Nodes.nullHash) == 0)
             return true;
 
@@ -1838,7 +2019,46 @@ public class Nodes : MonoBehaviour
         return System.Text.Encoding.UTF8.GetString(b, offset, (int)len);
     }
 
-    
+    string getScriptData(byte[] b, int offset, out int nofs)
+    {
+        int len;
+
+        if (b[offset] == 0x4C)
+        {
+            offset++;
+            len = b[offset];
+            offset++;
+        }
+        else if (b[offset] == 0x4D)
+        {
+            offset++;
+            len = (int)((b[offset + 1]) | (b[offset + 2] << 8));
+            offset += 2;
+        }
+        else if (b[offset] == 0x4E)
+        {
+            offset++;
+            len = (int)((b[offset + 1]) | (b[offset + 2] << 8) | (b[offset + 3] << 16) | (b[offset + 3] << 24));
+            offset += 5;
+        }
+        else
+        {
+            nofs = offset;
+            return null;
+        }
+
+        if ((offset + len) > b.Length)
+        {
+            nofs = offset;
+            return null;
+        }
+
+        nofs = offset + len;
+
+        return System.Text.Encoding.UTF8.GetString(b, offset, (int)len);
+    }
+
+
     bool get_type_infos(byte []script, out ApplicationTypeEntry tkey)
     {
         tkey = new ApplicationTypeEntry();
@@ -1996,6 +2216,12 @@ public class Nodes : MonoBehaviour
 
     NodixApplication isAppItem(TransactionInput tx)
     {
+        if (apps.root == null)
+            return null;
+
+        if (apps.root.applications == null)
+            return null;
+
         for (int n = 0; n < apps.root.applications.Length; n++)
         {
             if(compareHash(tx.txid, apps.root.applications[n].hash)==0)
@@ -2070,22 +2296,51 @@ public class Nodes : MonoBehaviour
         return null;
     }
 
-
-    bool ProcessTx(Tx tx)
+    appObj findAppObj(byte[] hash)
     {
-        NodixApplication app=null;
-        int item=0;
+        for(int n=0;n<appObjs.Count;n++)
+        {
+            if(compareHash(appObjs[n].txh,hash)==0)
+                return appObjs[n];
+        }
+
+        BigInteger k = new BigInteger(hash);
+
+        if (txstorage.Exists(k))
+        {
+            TxInfos infos;
+            Tx tx = txstorage.Get(k);
+
+            tx.hash = hash;
+
+            if(ProcessTx(tx,out infos))
+                return infos.obj;
+        }
+
+
+        return null;
+    }
+
+    bool ProcessTx(Tx tx,out TxInfos infos)
+    {
+        TxInfos txi= new TxInfos();
+
+        txi.app = null;
+        txi.obj = null;
+        txi.childOf = null;
+        txi.child = null;
+        txi.item = 0;
 
         for (int ni = 0; ni < tx.inputs.Length; ni++)
         {
-            if(compareHash(tx.inputs[ni].txid, Nodes.nullHash) ==0 )
+            if (compareHash(tx.inputs[ni].txid, Nodes.nullHash) ==0 )
             {
                 if(tx.inputs[ni].utxo >= 0xFFFF)
                 {
                     setAppRoot(tx);
                 }
             }
-            else if (compareHash(tx.inputs[ni].txid, apps.root.hash) == 0)
+            else if ((apps.root!=null)&&(apps.root.hash != null)&&(compareHash(tx.inputs[ni].txid, apps.root.hash) == 0))
             {
                 int next;
                 string appName = getScriptVar(tx.inputs[ni].script, 0, out next);
@@ -2094,60 +2349,63 @@ public class Nodes : MonoBehaviour
                 if(appName == "UnityApp")
                     recvApps = false;
             }
-            else if((app = isAppItem(tx.inputs[ni])) != null)
+            else if((txi.app = isAppItem(tx.inputs[ni])) != null)
             {
                 switch(tx.inputs[ni].utxo)
                 {
                     case 0:
-                        item = 1;
+                        txi.item = 1;
                     break;
                     case 1:
-                        item = 2;
+                        txi.item = 2;
                     break;
                     case 2:
-                        item = 3;
+                        txi.item = 3;
                     break;
                     case 3:
-                        item = 4;
+                        txi.item = 4;
                     break;
                     case 4:
-                        item = 5;
+                        txi.item = 5;
                     break;
                     case 5:
-                        item = 6;
+                        txi.item = 6;
                     break;
                     default:
+                        infos = txi;
                         return false;
-                    break;
 
                 }
-
-                Debug.Log("app Item " + app.name +" "+ item);
+                Debug.Log("app Item " + txi.app.name +" "+ txi.item);
+            }
+            else if((txi.childOf = findAppObj(tx.inputs[ni].txid)) != null)
+            {
+                Debug.Log("new child of " + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(tx.inputs[ni].txid));
             }
         }
 
-        if (app != null)
+        if (txi.app != null)
         {
-            switch(item )
+            switch(txi.item )
             {
                 case 1:
                     ApplicationType newType = parseAppType(tx);
 
-                    if (app.types == null)
+                    if (txi.app.types == null)
                     {
-                        app.types = new ApplicationType[1];
-                        app.types[0] = newType;
+                        txi.app.types = new ApplicationType[1];
+                        txi.app.types[0] = newType;
                     }
                     else
                     {
-                        ApplicationType[] at = new ApplicationType[app.types.Length + 1];
+                        ApplicationType[] at = new ApplicationType[txi.app.types.Length + 1];
 
-                        for (int n = 0; n < app.types.Length; n++)
+                        for (int n = 0; n < txi.app.types.Length; n++)
                         {
-                            at[n] = app.types[n];
+                            at[n] = txi.app.types[n];
                         }
-                        at[app.types.Length] = newType;
-                        app.types = at;
+                        at[txi.app.types.Length] = newType;
+                        txi.app.types = at;
                     }
                     saveApps();
                 break;
@@ -2157,23 +2415,145 @@ public class Nodes : MonoBehaviour
                         if((tx.outputs[ni].amount & 0xFFFFFFFF00000000)== 0xFFFFFFFF00000000)
                         {
                             uint typeid = (uint)(tx.outputs[ni].amount & 0xFFFFFFFF);
-
-                            ApplicationType type = findAppType(app, typeid);
+                            byte opcode;
+                            long tlen;
+                            ApplicationType type = findAppType(txi.app, typeid);
                             if (type == null)
+                            {
+                                infos = txi;
                                 return false;
+                            }
+                                
 
-                            room.newObj(typeid, tx.outputs[ni].script);
+                            MemoryStream buffer = new MemoryStream(tx.outputs[ni].script);
+                            BinaryReader reader = new BinaryReader(buffer);
+
+                            int pkLen = reader.ReadByte();
+
+                            if (pkLen != 33)
+                            {
+                                infos = txi;
+                                return false;
+                            }
+
+                            txi.obj = new appObj();
+                            txi.obj.pubkey = reader.ReadBytes(33);
+                            txi.obj.type = typeid;
+                            txi.obj.txh = tx.hash;
+                            
+
+                            //user.addr = WalletAddress.pub2addr(new ECPublicKeyParameters(domainParams.Curve.DecodePoint(user.pkey), domainParams));
+
+                            opcode = reader.ReadByte();
+                            if (opcode != 0xAC)
+                            {
+                                infos = txi;
+                                return false;
+                            }
+
+                            opcode = reader.ReadByte();
+
+                            if (opcode != 0x6A)
+                            {
+                                infos = txi;
+                                return false;
+                            }
+
+                            opcode = reader.ReadByte();
+
+
+                            if (opcode == 0x4c)
+                                tlen = (long)reader.ReadByte();
+                            else if (opcode == 0x4d)
+                                tlen = (long)reader.ReadUInt16();
+                            else if (opcode == 0x4e)
+                                tlen = (long)reader.ReadUInt32();
+                            else
+                            {
+                                infos = txi;
+                                return false;
+                            }
+
+
+                            txi.obj.objData = new byte[tlen];
+
+                            Buffer.BlockCopy(tx.outputs[ni].script, (int)buffer.Position, txi.obj.objData, 0, (int)tlen);
+
+                            appObjs.Add(txi.obj);
+
+                            Debug.Log("new app object " + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(tx.hash));
+
+                            //room.newObj(typeid, tx.outputs[ni].script);
 
 
                         }
                     }
                 break;
             }
-            
+        }
+        else if (txi.childOf != null)
+        {
+            MemoryStream buffer = new MemoryStream(tx.outputs[0].script);
+            BinaryReader reader = new BinaryReader(buffer);
+
+            int offset=0, next=0;
+
+            string key = getScriptData(tx.outputs[0].script, 0, out next);
+            offset = next ;
+
+            if (tx.outputs[0].script[offset] != 0x4C)
+            {
+                infos = txi;
+                return false;
+            }
+
+            if (tx.outputs[0].script[offset+1] != 32)
+            {
+                infos = txi;
+                return false;
+            }
+
+            offset += 2;
+
+            byte[] childHash = new byte[32];
+            Buffer.BlockCopy(tx.outputs[0].script, offset, childHash, 0, 32);
+            txi.child = findAppObj(childHash);
+
+            if(txi.child != null)
+                Debug.Log("new child " + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(childHash));
+            else
+                Debug.Log("new child not found " + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(childHash));
+
+        }
+        infos = txi;
+        return true;
+    }
+
+    public void GetTx(byte[] hash)
+    {
+        BigInteger k = new BigInteger(hash);
+        if (txstorage.Exists(k))
+        {
+            TxInfos infos;
+            Tx tx = txstorage.Get(k);
+            tx.hash = Hash(Hash(TXtoBytes(tx)));
+            ProcessTx(tx,out infos);
+            return;
         }
 
+        byte[] rh = new byte[32];
 
-        return true;
+        for (int n = 0; n < 32; n++)
+        {
+            rh[n] = room.roomHash[31 - n];
+        }
+
+        messageInventoryHash[] hashList = new messageInventoryHash[1];
+        hashList[0].hash = rh;
+        hashList[0].type = 1;
+
+        NodesList[0].SendGetDataMessage(hashList);
+
     }
 
     bool isSync()
@@ -2221,8 +2601,24 @@ public class Nodes : MonoBehaviour
 
         return script;
     }
+    byte[] objchildScript(string key, byte[] hash)
+    {
+        MemoryStream m = new MemoryStream();
+        BinaryWriter writer = new BinaryWriter(m);
 
-  
+        writer.Write((byte)0x4C);
+        writer.Write((byte)key.Length);
+        writer.Write(key.ToCharArray());
+        writer.Write((byte)0x4C);
+        writer.Write((byte)32);
+        writer.Write(hash);
+
+        byte[] script = new byte[m.Position];
+        Buffer.BlockCopy(m.ToArray(), 0, script, 0, (int)m.Position);
+
+        return script;
+    }
+
 
 
     byte[] computeTxSignHash(Tx tx, int i, byte[] script,uint hashtype)
@@ -2243,14 +2639,6 @@ public class Nodes : MonoBehaviour
 
             if (i == n)
             {
-                /*
-                Tx prevTx;
-                TransactionOutput ptxo;
-                prevTx = txstorage.Get(new BigInteger(tx.inputs[n].txid));
-                ptxo = prevTx.outputs[tx.inputs[n].utxo];
-                Nodes.writeVINT((ulong)ptxo.script.Length, writer);
-                writer.Write(ptxo.script); 
-                */
                 Nodes.writeVINT((ulong)script.Length, writer);
                 writer.Write(script);
             }
@@ -2276,25 +2664,24 @@ public class Nodes : MonoBehaviour
 
         return Hashd(buffer.GetBuffer(), (int)buffer.Position);
     }
-
-    void signTx(Tx tx, WalletAddress mykey, ECDomainParameters domainParams)
+    
+    public bool isSendingPos()
     {
-        for (int n = 0; n < tx.inputs.Length; n++)
-        {
-            byte[] sh = computeTxSignHash(tx, n, tx.outputs[0].script,1);
-            byte[] sign = mykey.Sign(sh, domainParams);
-            
-            tx.inputs[n].script = new byte[sign.Length + 1];
-            tx.inputs[n].script[0] = (byte)sign.Length;
-            Buffer.BlockCopy(sign, 0, tx.inputs[n].script, 1, sign.Length);
-        }
+        return sendingPos;
     }
 
-    public void sendroomUserTx(roomUser user, WalletAddress mykey, ECDomainParameters domainParams)
+    public void sendroomUserTx(byte[] roomHash,roomUser user, WalletAddress mykey, ECDomainParameters domainParams)
     {
         NodixApplication app = findNodixApp("UnityApp");
+
+        if (app == null)
+            return;
+
+        sendingPos = true;
+
         ApplicationType UserType = findAppType(app, 0x1E00002B);
         Tx transaction = new Tx();
+        Tx ctransaction = new Tx();
 
         transaction.version = 1;
         transaction.time = (uint)System.DateTimeOffset.Now.ToUnixTimeSeconds();
@@ -2311,19 +2698,56 @@ public class Nodes : MonoBehaviour
 
         transaction.locktime = 0xFFFFFFFF;
 
-        signTx(transaction, mykey, domainParams);
 
-        for(int n=0;n<NodesList.Count;n++)
+        byte[] sh = computeTxSignHash(transaction, 0, transaction.outputs[0].script, 1);
+        byte[] sign = mykey.Sign(sh, domainParams);
+        transaction.inputs[0].script = new byte[sign.Length + 1];
+        transaction.inputs[0].script[0] = (byte)sign.Length;
+        Buffer.BlockCopy(sign, 0, transaction.inputs[0].script, 1, sign.Length);
+
+        transaction.hash = Hash(Hash(TXtoBytes(transaction)));
+
+        ctransaction.version = 1;
+        ctransaction.time = (uint)System.DateTimeOffset.Now.ToUnixTimeSeconds();
+
+        ctransaction.inputs = new TransactionInput[1];
+        ctransaction.outputs = new TransactionOutput[1];
+
+        ctransaction.inputs[0].txid = roomHash;
+        ctransaction.inputs[0].utxo = 0;
+        ctransaction.inputs[0].sequence = 0xFFFFFFFF;
+
+        ctransaction.outputs[0].amount = 0;
+        ctransaction.outputs[0].script = objchildScript("users", transaction.hash);
+
+        ctransaction.locktime = 0xFFFFFFFF;
+
+        byte[] csh = computeTxSignHash(ctransaction, 0, transaction.outputs[0].script, 1);
+        byte[] csign = mykey.Sign(csh, domainParams);
+
+        ctransaction.inputs[0].script = new byte[csign.Length + 1 + 35];
+        ctransaction.inputs[0].script[0] = (byte)(csign.Length+1);
+        Buffer.BlockCopy(csign, 0, ctransaction.inputs[0].script, 1, csign.Length);
+        ctransaction.inputs[0].script[csign.Length + 1] = 1;
+
+        ctransaction.inputs[0].script[csign.Length + 2] = 33;
+        Buffer.BlockCopy(user.pkey, 0, ctransaction.inputs[0].script, csign.Length+3, 33);
+
+        ctransaction.hash = Hash(Hash(TXtoBytes(ctransaction)));
+
+        for (int n = 0; n < NodesList.Count; n++)
         {
             NodesList[n].SendTxMessage(transaction);
+            NodesList[n].SendTxMessage(ctransaction);
         }
-        
-        
 
+        sendingPos = false;
+
+        return;
     }
 
 
-        // Update is called once per frame
+    // Update is called once per frame
     void Update()
     {
 
@@ -2347,7 +2771,7 @@ public class Nodes : MonoBehaviour
             }
              
             
-            if ((System.DateTimeOffset.Now.ToUnixTimeMilliseconds() - NodesList[n].lastPingTime) > 30000) 
+            if ((System.DateTimeOffset.Now.ToUnixTimeMilliseconds() - NodesList[n].lastPingTime) > 120000) 
             { 
                 if (!NodesList[n].waitPong)
                     NodesList[n].SendPingMessage();
@@ -2379,10 +2803,8 @@ public class Nodes : MonoBehaviour
 
                 if (((app = findNodixApp("UnityApp")) != null) && (app.types != null) && (app.types.Length > 0))
                 {
-                    NodesList[n].SendMempoolMessage();
+                    NodesList[n].SendTmppoolMessage();
                 }
-
-                
             }
 
 
@@ -2458,17 +2880,23 @@ public class Nodes : MonoBehaviour
 
             lock (NodesList[n]._txLock)
             {
+
                 for (int nn = 0; nn < NodesList[n].RecvTransactions.Count; nn++)
                 {
+                    Tx tx = NodesList[n].RecvTransactions[nn];
 
-                    if (!txstorage.Exists(new BigInteger(NodesList[n].RecvTransactions[nn].hash)))
+                    if (!txstorage.Exists(new BigInteger(tx.hash)))
                     {
-                        if (ProcessTx(NodesList[n].RecvTransactions[nn]))
+                        TxInfos infos;
+                        if (ProcessTx(tx, out infos))
                         {
-                            if(NodesList[n].RecvTransactions[nn].locktime != 0xFFFFFFFF)
-                                txstorage.Set(new BigInteger(NodesList[n].RecvTransactions[nn].hash), NodesList[n].RecvTransactions[nn]);
+                            if ((infos.childOf != null) && (infos.child != null))
+                                room.newObj(infos.childOf, infos.child);
+
+                            if (tx.locktime != 0xFFFFFFFF)
+                                txstorage.Set(new BigInteger(tx.hash), tx);
                         }
-                            
+
                     }
                 }
 
@@ -2529,5 +2957,6 @@ public class Nodes : MonoBehaviour
     {
         blksIdxtorage.Close();
         blkstorage.Close();
+        txstorage.Close();
     }
 }

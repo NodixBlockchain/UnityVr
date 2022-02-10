@@ -3,7 +3,7 @@ Library/PlayerDataCache/*
 Library/PackageCache/*
 Library/StateCache/*
 Library/Artifacts/*
-Library/Bee/Artifacts/*
+Library/Bee/*
 Library/ArtifactDB
 obj/Debug/*
 Temp/*

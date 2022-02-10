@@ -322,7 +322,7 @@ public class vrRoom : MonoBehaviour
     public string server;
     public GameObject floorPlane;
     public GameObject mainPanel;
-    public string roomHash;
+    public byte[] roomHash;
 
     public int sceneTypeId = 0x34;
     public int wallTypeId = 0x01f;
@@ -345,6 +345,7 @@ public class vrRoom : MonoBehaviour
     private string appName = "UnityApp";
     private string baseURL = "/app/UnityApp";
 
+    private string myaddr;
     
 
     private List<WallSegment> wallSegments;
@@ -375,7 +376,6 @@ public class vrRoom : MonoBehaviour
     private bool SetWallObj = false;
     private bool lastTrigger = false;
     private bool hasHeadset = false;
-    private bool sendingPos;
 
 
     private Vector3 origPos ;
@@ -403,9 +403,10 @@ public class vrRoom : MonoBehaviour
         return EditRoomWall;
     }
 
-    public void setECDomain(ECDomainParameters domainParams)
+    public void setECDomain(ECDomainParameters domainParams,string myaddr)
     {
         this.domainParams = domainParams;
+        this.myaddr = myaddr;
 
     }
 
@@ -431,6 +432,8 @@ public class vrRoom : MonoBehaviour
 
     public void newUser(roomUser user)
     {
+        
+
         for(int n=0;n<users.Count;n++)
         {
             if (users[n].addr == user.addr)
@@ -444,8 +447,9 @@ public class vrRoom : MonoBehaviour
                 }
                 else if(users[n].AvatarObj)
                 {
-                    users[n].AvatarObj.transform.position = new Vector3(user.pos.x, user.pos.y+2.0f, user.pos.z); ;
-                    users[n].AvatarObj.transform.rotation = user.rot;
+                    users[n].AvatarObj.transform.position = new Vector3(user.pos.x, 0.75f, user.pos.z); ;
+                    users[n].AvatarObj.transform.rotation = new Quaternion(user.rot.x, user.rot.y, user.rot.z, user.rot.w);
+                    users[n].AvatarObj.transform.localScale = new Vector3(1.5f, 1.5f, 1.5f); ;
                 }
                 return;
             }
@@ -471,10 +475,10 @@ public class vrRoom : MonoBehaviour
         writer.Write(user.pos.z);
 
 
-        writer.Write(user.rot.x);
-        writer.Write(user.rot.y);
-        writer.Write(user.rot.z);
-        writer.Write(user.rot.w);
+        writer.Write((double)user.rot.x);
+        writer.Write((double)user.rot.y);
+        writer.Write((double)user.rot.z);
+        writer.Write((double)user.rot.w);
 
         byte[] objBuffer = new byte[m.Position];
         Buffer.BlockCopy(m.ToArray(), 0, objBuffer, 0, (int)m.Position);
@@ -482,7 +486,75 @@ public class vrRoom : MonoBehaviour
 
         return objBuffer;
     }
-    public bool newObj(uint type, byte[] data)
+    public roomUser  BytesTouser(byte[] data)
+    {
+        float x;
+        float y;
+        float z;
+
+        double dx;
+        double dy;
+        double dz;
+        double w;
+        roomUser user = new roomUser();
+
+        MemoryStream buffer = new MemoryStream(data);
+        BinaryReader reader = new BinaryReader(buffer);
+
+        long nlen = Nodes.readVINT(reader);
+        user.name = new string(reader.ReadChars((int)nlen));
+        user.avatar = reader.ReadBytes(32);
+
+        x = reader.ReadSingle();
+        y = reader.ReadSingle();
+        z = reader.ReadSingle();
+
+        user.pos = new Vector3(x, y, z);
+
+        dx = reader.ReadDouble();
+        dy = reader.ReadDouble();
+        dz = reader.ReadDouble();
+        w = reader.ReadDouble();
+
+        user.rot = new Quaternion((float)dx, (float)dy, (float)dz, (float)w);
+
+        return user;
+    }
+
+    public bool newObj(appObj parent, appObj child)
+    {
+        if (this.roomHash == null)
+            return false;
+
+        if ((parent.type & 0x00FFFFFF) != roomTypeId)
+            return false;
+
+        if (Nodes.compareHash(parent.txh, this.roomHash) != 0)
+            return false;
+
+        if ((child.type & 0x00FFFFFF) == userTypeId)
+        {
+            roomUser user = BytesTouser(child.objData);
+
+            user.pkey = child.pubkey;
+
+            Debug.Log("new user " + user.name + " av : " + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(user.avatar) + " key : " + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(user.pkey) + " " + user.pos.ToString() + " " + user.rot.eulerAngles.ToString());
+
+            user.addr = WalletAddress.pub2addr(new ECPublicKeyParameters(domainParams.Curve.DecodePoint(user.pkey), domainParams));
+
+            if (user.addr != myaddr)
+                newUser(user);
+
+            return true;
+        }
+            
+
+
+        return false;
+
+    }
+    /*
+        public bool newObj(uint type, byte[] data)
     {
         if( (type & 0x00FFFFFF) == userTypeId)
         {
@@ -556,6 +628,7 @@ public class vrRoom : MonoBehaviour
 
         return true;
     }
+    */
 
     public void resetRoom()
     {
@@ -1560,6 +1633,13 @@ public class vrRoom : MonoBehaviour
 
         Loading.GetComponentInChildren<Slider>().minValue = 0;
         Loading.GetComponentInChildren<Slider>().maxValue = wallSegments.Count + sceneObjects.Count;
+
+        for (int n = 0; n < Camera.allCameras.Length; n++)
+        {
+            if (Camera.allCameras[n].name == "UI Camera")
+                Loading.GetComponent<Canvas>().worldCamera = Camera.allCameras[n];
+        }
+
     }
 
     public void updateLoading()
@@ -1619,6 +1699,13 @@ public class vrRoom : MonoBehaviour
             
     }
 
+    public bool isLoaded()
+    {
+        if (Loading != null)
+            return false;
+
+        return true;
+    }
     public void addObj(GameObject obj, string hash)
     {
         obj.GetComponent<UnityGLTF.GLTFComponent>().transform.position = new Vector3(0.0f, 2.0f, 0.0f);
@@ -1640,6 +1727,62 @@ public class vrRoom : MonoBehaviour
     }
 
 
+    public IEnumerator loadRoom(string hash)
+    {
+        string URL = "http://" + server + baseURL + "/obj/" + hash + "/15";
+        Debug.Log("loading room " + URL);
+
+        UnityWebRequest webRequest = UnityWebRequest.Get(URL);
+
+        // Request and wait for the desired page.
+        yield return webRequest.SendWebRequest();
+
+        switch (webRequest.result)
+        {
+            case UnityWebRequest.Result.ConnectionError:
+            case UnityWebRequest.Result.DataProcessingError:
+                Debug.LogError("Room : Error: " + webRequest.error);
+                break;
+            case UnityWebRequest.Result.ProtocolError:
+                Debug.LogError("Room : HTTP Error: " + webRequest.error);
+                break;
+            case UnityWebRequest.Result.Success:
+                
+                Debug.Log("ROOM  " + hash + " : \nReceived: " + webRequest.downloadHandler.text);
+
+                
+
+                var mroom = JsonUtility.FromJson<Room>(webRequest.downloadHandler.text);
+                if (mroom.objects == null)
+                {
+                    Debug.Log("ROOM  no objects");
+                }
+                else
+                {
+                    for (int n = 0; n < mroom.objects.Length; n++)
+                    {
+                        this.loadScene(mroom.objects[n].objHash);
+                    }
+                }
+
+                if (mroom.walls == null)
+                {
+                    Debug.Log("ROOM  no walls");
+                }
+                else
+                {
+                    for (int n = 0; n < mroom.walls.Length; n++)
+                    {
+                        this.newWallSeg(new Vector2(mroom.walls[n].start[0], mroom.walls[n].start[1]), mroom.walls[n].objHash.objHash);
+                    }
+
+                    this.buildWalls();
+                }
+                this.showLoading();
+
+                break;
+        }
+    }
     IEnumerator SubmitTx(string txid)
     {
         string URL = "http://" + this.server + "/jsonrpc";
@@ -1654,16 +1797,12 @@ public class vrRoom : MonoBehaviour
             case UnityWebRequest.Result.ConnectionError:
             case UnityWebRequest.Result.DataProcessingError:
                 Debug.Log("SubmitTx " + submittx + " : Error: " + webRequest.error);
-                this.sendingPos = false;
                 break;
             case UnityWebRequest.Result.ProtocolError:
                 Debug.Log("SubmitTx " + submittx + " : HTTP Error: " + webRequest.error);
-                this.sendingPos = false;
                 break;
             case UnityWebRequest.Result.Success:
                 Debug.Log("SubmitTx " + submittx + " : \nReceived: " + webRequest.downloadHandler.text);
-
-                this.sendingPos = false;
                 break;
         }
     }
@@ -1686,11 +1825,9 @@ public class vrRoom : MonoBehaviour
                 case UnityWebRequest.Result.ConnectionError:
                 case UnityWebRequest.Result.DataProcessingError:
                     Debug.Log("signTx  " + signtx + " : Error: " + webRequest.error);
-                    this.sendingPos = false;
                     break;
                 case UnityWebRequest.Result.ProtocolError:
                     Debug.Log("signTx  " + signtx + " : HTTP Error: " + webRequest.error);
-                    this.sendingPos = false;
                     break;
                 case UnityWebRequest.Result.Success:
 
@@ -2231,7 +2368,7 @@ public class vrRoom : MonoBehaviour
         }
     }
 
-
+    /*
     IEnumerator addRoomUserTx()
     {
         string URL = "http://" + this.server + "/jsonrpc";
@@ -2382,6 +2519,7 @@ public class vrRoom : MonoBehaviour
                 break;
         }
     }
+    */
 
     public void saveAllScenes(WalletAddress mainKey)
     {
