@@ -251,7 +251,8 @@ public class Node
     public bool connected = false;
     public bool hasVer = false;
     public bool recvHDR = false;
-    
+    public bool versionSent = false;
+
     public uint current_blk;
 
     public List<messageInventoryHash> inventory;
@@ -271,7 +272,6 @@ public class Node
     
     
 
-    long last_block;
 
     public Node(string address, ushort port,bool isSeed, IPAddress myip)
     {
@@ -312,7 +312,8 @@ public class Node
         }
         catch (Exception e)
         {
-            Debug.Log(e.ToString());
+            Debug.Log(e.ToString()); 
+		    ConnectionError();
         }
     }
     public uint getLastBlock()
@@ -339,7 +340,7 @@ public class Node
             // Complete the connection.  
             client.EndConnect(ar);
 
-            SendVersionMessage();
+            
             ReceivePacketHDR();
 
             waitConnect = false;
@@ -348,7 +349,8 @@ public class Node
         }
         catch (Exception e)
         {
-            Debug.Log(e.ToString());
+            Debug.Log(e.ToString()); 
+		    ConnectionError();
         }
     }
 
@@ -444,7 +446,7 @@ public class Node
         {
             // Complete sending the data to the remote device.  
             int bytesSent = client.EndSend(ar);
-            Debug.Log("Sent bytes to server." + bytesSent);
+            /* Debug.Log("Sent bytes to server." + bytesSent); */
 
         }
         catch (Exception e)
@@ -456,102 +458,156 @@ public class Node
 
     private void SendPongMessage(ulong nonce)
     {
-        messagePong pong = new messagePong();
-        pong.nonce = nonce;
+        try
+        {
+            messagePong pong = new messagePong();
+            pong.nonce = nonce;
 
-        MemoryStream m = new MemoryStream();
-        BinaryWriter writer = new BinaryWriter(m);
+            MemoryStream m = new MemoryStream();
+            BinaryWriter writer = new BinaryWriter(m);
 
-        writer.Write(pong.nonce);
+            writer.Write(pong.nonce);
 
-        byte[] messageBuffer = createMessageBuffer("pong", m);
+            byte[] messageBuffer = createMessageBuffer("pong", m);
 
-        client.BeginSend(messageBuffer, 0, (int)(24 + m.Position), 0, new AsyncCallback(SendCallback), client);
+            client.BeginSend(messageBuffer, 0, (int)(24 + m.Position), 0, new AsyncCallback(SendCallback), client);
+        }
+        catch (Exception e)
+        {
+            Debug.Log(e.ToString()); 
+            ConnectionError();
+        }
     }
 
+    private void ConnectionError()
+    {
+        connected = false;
+        client.Close();
+        client = null;
+
+    }
     public void SendGetDataMessage(messageInventoryHash[] hashList)
     {
-
-        MemoryStream m = new MemoryStream();
-        BinaryWriter writer = new BinaryWriter(m);
-
-        Nodes.writeVINT((ulong)hashList.Length, writer);
-        for (int n = 0; n < hashList.Length; n++)
+        try
         {
-            writer.Write(hashList[n].type);
-            writer.Write(hashList[n].hash);
+            MemoryStream m = new MemoryStream();
+            BinaryWriter writer = new BinaryWriter(m);
+
+            Nodes.writeVINT((ulong)hashList.Length, writer);
+            for (int n = 0; n < hashList.Length; n++)
+            {
+                writer.Write(hashList[n].type);
+                writer.Write(hashList[n].hash);
+            }
+
+            byte[] messageBuffer = createMessageBuffer("getdata", m);
+
+            client.BeginSend(messageBuffer, 0, (int)(24 + m.Position), 0, new AsyncCallback(SendCallback), client);
         }
-
-        byte[] messageBuffer = createMessageBuffer("getdata", m);
-
-        client.BeginSend(messageBuffer, 0, (int)(24 + m.Position), 0, new AsyncCallback(SendCallback), client);
+        catch (Exception e)
+        {
+            Debug.Log(e.ToString()); 
+		    ConnectionError();
+        }
     }
 
     public void SendGetHeadersMessage(List<byte[]> hdrs)
     {
+
         messageGetHeaders gethdr = new messageGetHeaders();
         gethdr.version = 10;
         gethdr.hashes = hdrs;
         gethdr.hashStop = new byte[32];
 
-
-        MemoryStream m = new MemoryStream();
-        BinaryWriter writer = new BinaryWriter(m);
-
-        writer.Write(gethdr.version);
-        Nodes.writeVINT((ulong)gethdr.hashes.Count, writer);
-
-        for (int n = 0; n < gethdr.hashes.Count; n++)
+        try
         {
-            writer.Write(gethdr.hashes[n]);
+            MemoryStream m = new MemoryStream();
+            BinaryWriter writer = new BinaryWriter(m);
+
+            writer.Write(gethdr.version);
+            Nodes.writeVINT((ulong)gethdr.hashes.Count, writer);
+
+            for (int n = 0; n < gethdr.hashes.Count; n++)
+            {
+                writer.Write(gethdr.hashes[n]);
+            }
+            writer.Write(gethdr.hashStop);
+
+            byte[] messageBuffer = createMessageBuffer("getheaders", m);
+
+            recvHDR = true;
+
+            client.BeginSend(messageBuffer, 0, (int)(24 + m.Position), 0, new AsyncCallback(SendCallback), client);
         }
-        writer.Write(gethdr.hashStop);
-
-        byte[] messageBuffer = createMessageBuffer("getheaders", m);
-
-        recvHDR = true;
-
-        client.BeginSend(messageBuffer, 0, (int)(24 + m.Position), 0, new AsyncCallback(SendCallback), client);
+        catch (Exception e)
+        {
+            Debug.Log(e.ToString()); 
+		    ConnectionError();
+        }
     }
     public void SendPingMessage()
     {
-        messagePong ping = new messagePong();
-        ping.nonce = nodeNonce++;
+        try
+        {
+            messagePong ping = new messagePong();
+            ping.nonce = nodeNonce++;
 
-        MemoryStream m = new MemoryStream();
-        BinaryWriter writer = new BinaryWriter(m);
+            MemoryStream m = new MemoryStream();
+            BinaryWriter writer = new BinaryWriter(m);
 
-        writer.Write(ping.nonce);
+            writer.Write(ping.nonce);
 
-        byte[] messageBuffer = createMessageBuffer("ping", m);
+            byte[] messageBuffer = createMessageBuffer("ping", m);
 
-        lastPingTime = System.DateTimeOffset.Now.ToUnixTimeMilliseconds();
-        lastPingNonce = ping.nonce;
-        waitPong = true;
+            lastPingTime = System.DateTimeOffset.Now.ToUnixTimeMilliseconds();
+            lastPingNonce = ping.nonce;
+            waitPong = true;
 
-        client.BeginSend(messageBuffer, 0, (int)(24 + m.Position), 0, new AsyncCallback(SendCallback), client);
+            client.BeginSend(messageBuffer, 0, (int)(24 + m.Position), 0, new AsyncCallback(SendCallback), client);
+        }
+        catch (Exception e)
+        {
+            Debug.Log(e.ToString()); 
+		    ConnectionError();
+        }
     }
 
     public void SendGetAppsMessage()
     {
-        MemoryStream m = new MemoryStream();
-        BinaryWriter writer = new BinaryWriter(m);
+        try
+        {
+            MemoryStream m = new MemoryStream();
+            BinaryWriter writer = new BinaryWriter(m);
 
-        byte[] messageBuffer = createMessageBuffer("getapps", m);
+            byte[] messageBuffer = createMessageBuffer("getapps", m);
 
-        client.BeginSend(messageBuffer, 0, (int)(24 + m.Position), 0, new AsyncCallback(SendCallback), client);
+            client.BeginSend(messageBuffer, 0, (int)(24 + m.Position), 0, new AsyncCallback(SendCallback), client);
+        }
+        catch (Exception e)
+        {
+            Debug.Log(e.ToString()); 
+		    ConnectionError();
+        }
     }
 
     public void SendGetAppTypeMessage(byte[] hash)
     {
-        MemoryStream m = new MemoryStream();
-        BinaryWriter writer = new BinaryWriter(m);
+        try
+        {
+            MemoryStream m = new MemoryStream();
+            BinaryWriter writer = new BinaryWriter(m);
 
-        writer.Write(hash);
+            writer.Write(hash);
 
-        byte[] messageBuffer = createMessageBuffer("getapptypes", m);
+            byte[] messageBuffer = createMessageBuffer("getapptypes", m);
 
-        client.BeginSend(messageBuffer, 0, (int)(24 + m.Position), 0, new AsyncCallback(SendCallback), client);
+            client.BeginSend(messageBuffer, 0, (int)(24 + m.Position), 0, new AsyncCallback(SendCallback), client);
+        }
+        catch (Exception e)
+        {
+            Debug.Log(e.ToString()); 
+		    ConnectionError();
+        }
     }
 
 
@@ -562,12 +618,20 @@ public class Node
 
         sentMP = true;
 
-        MemoryStream m = new MemoryStream();
-        BinaryWriter writer = new BinaryWriter(m);
+        try
+        {
+            MemoryStream m = new MemoryStream();
+            BinaryWriter writer = new BinaryWriter(m);
 
-        byte[] messageBuffer = createMessageBuffer("tmppool", m);
+            byte[] messageBuffer = createMessageBuffer("tmppool", m);
 
-        client.BeginSend(messageBuffer, 0, (int)(24 + m.Position), 0, new AsyncCallback(SendCallback), client);
+            client.BeginSend(messageBuffer, 0, (int)(24 + m.Position), 0, new AsyncCallback(SendCallback), client);
+        }
+        catch (Exception e)
+        {
+            Debug.Log(e.ToString()); 
+		    ConnectionError();
+        }
     }
     public void SendMempoolMessage()
     {
@@ -576,40 +640,61 @@ public class Node
 
         sentMP = true;
 
-        MemoryStream m = new MemoryStream();
-        BinaryWriter writer = new BinaryWriter(m);
+        try { 
 
-        byte[] messageBuffer = createMessageBuffer("mempool", m);
+            MemoryStream m = new MemoryStream();
+            BinaryWriter writer = new BinaryWriter(m);
 
-        client.BeginSend(messageBuffer, 0, (int)(24 + m.Position), 0, new AsyncCallback(SendCallback), client);
+            byte[] messageBuffer = createMessageBuffer("mempool", m);
+
+            client.BeginSend(messageBuffer, 0, (int)(24 + m.Position), 0, new AsyncCallback(SendCallback), client);
+        }
+        catch (Exception e)
+        {
+            Debug.Log(e.ToString()); 
+		    ConnectionError();
+        }
     }
 
     public void SendTxMessage(Tx tx)
     {
         MemoryStream m = new MemoryStream();
         BinaryWriter writer = new BinaryWriter(m);
+        try
+        {
+            byte[] txbuffer = Nodes.TXtoBytes(tx);
+            tx.hash = Nodes.Hash(Nodes.Hash(txbuffer));
+            writer.Write(txbuffer);
 
-        byte[] txbuffer = Nodes.TXtoBytes(tx);
-        tx.hash = Nodes.Hash(Nodes.Hash(txbuffer));
-        writer.Write(txbuffer);
+            byte[] messageBuffer = createMessageBuffer("tx", m);
 
-        byte[] messageBuffer = createMessageBuffer("tx", m);
-
-        client.BeginSend(messageBuffer, 0, (int)(24 + m.Position), 0, new AsyncCallback(SendCallback), client);
+            client.BeginSend(messageBuffer, 0, (int)(24 + m.Position), 0, new AsyncCallback(SendCallback), client);
+        }
+        catch (Exception e)
+        {
+            Debug.Log(e.ToString()); 
+		    ConnectionError();
+        }
     }
 
     private void SendVerackMessage()
     {
-        MemoryStream m = new MemoryStream();
-        BinaryWriter writer = new BinaryWriter(m);
+        try { 
+            MemoryStream m = new MemoryStream();
+            BinaryWriter writer = new BinaryWriter(m);
 
-        byte[] messageBuffer = createMessageBuffer("verack", m);
+            byte[] messageBuffer = createMessageBuffer("verack", m);
 
-        client.BeginSend(messageBuffer, 0, (int)(24 + m.Position), 0, new AsyncCallback(SendCallback), client);
-
+            client.BeginSend(messageBuffer, 0, (int)(24 + m.Position), 0, new AsyncCallback(SendCallback), client);
+        }
+        catch (Exception e)
+        {
+            Debug.Log(e.ToString()); 
+		    ConnectionError();
+        }
     }
 
-    private void SendVersionMessage()
+    public void SendVersionMessage(uint bh)
     {
         try
         {
@@ -617,7 +702,7 @@ public class Node
 
 
             ver.proto_ver = 60018;
-            ver.services = 0;
+            ver.services = 1;
             ver.timestamp = (ulong)System.DateTimeOffset.Now.ToUnixTimeSeconds();
 
             ver.myAddr.ip = myip;
@@ -630,7 +715,7 @@ public class Node
 
             ver.nonce = nodeNonce++;
             ver.user_agent = "NodixVR";
-            ver.last_blk = 0;
+            ver.last_blk = bh;
 
             MemoryStream m = new MemoryStream();
             BinaryWriter writer = new BinaryWriter(m);
@@ -652,7 +737,8 @@ public class Node
         }
         catch (Exception e)
         {
-            Debug.Log(e.ToString());
+            Debug.Log(e.ToString()); 
+		    ConnectionError();
         }
     }
 
@@ -667,6 +753,7 @@ public class Node
             if (bytesRead <= 0)
             {
                 Debug.Log("ReceiveVersionCallback error ");
+                ConnectionError();
                 return;
             }
 
@@ -717,7 +804,8 @@ public class Node
         }
         catch (Exception e)
         {
-            Debug.Log(e.ToString());
+            Debug.Log(e.ToString()); 
+		    ConnectionError();
         }
 
 
@@ -745,6 +833,7 @@ public class Node
             if (bytesRead <= 0)
             {
                 Debug.Log("ReceiveHeadersCallBack error ");
+                ConnectionError();
                 return;
             }
 
@@ -781,8 +870,8 @@ public class Node
         }
         catch (Exception e)
         {
-            Debug.Log(e.ToString());
-            return;
+            Debug.Log(e.ToString()); 
+		    ConnectionError();
         }
     }
     
@@ -806,6 +895,7 @@ public class Node
             if (bytesRead <= 0)
             {
                 Debug.Log("ReceiveHeadersCallBack error ");
+                ConnectionError();
                 return;
             }
 
@@ -830,13 +920,18 @@ public class Node
 
                     hashstr= hashstr + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(h.hash) + ",";
 
+                    if(h.type==2)
+                    {
+                        ver.last_blk++;
+                    }
+
                     lock (_invLock)
                     {
                         inventory.Add(h);
                     }
                 }
 
-                Debug.Log("get inv message "+ hashstr);
+                /*Debug.Log("get inv message "+ hashstr);*/
 
                 ReceivePacketHDR();
             }
@@ -845,8 +940,8 @@ public class Node
         }
         catch (Exception e)
         {
-            Debug.Log(e.ToString());
-            return;
+            Debug.Log(e.ToString()); 
+		    ConnectionError();
         }
     }
 
@@ -871,6 +966,7 @@ public class Node
             if (bytesRead <= 0)
             {
                 Debug.Log("ReceiveHeadersCallBack error ");
+                ConnectionError();
                 return;
             }
 
@@ -890,15 +986,15 @@ public class Node
                 }
                 ReceivePacketHDR();
 
-                Debug.Log("get tx message " + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(transaction.hash));
+                /*Debug.Log("get tx message " + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(transaction.hash));*/
             }
             else
                 client.BeginReceive(msg.buffer, 0, (int)(msg.hdr.size - msg.m.Position), 0, new AsyncCallback(ReceiveTxCallBack), msg);
         }
         catch (Exception e)
         {
-            Debug.Log(e.ToString());
-            return;
+            Debug.Log(e.ToString()); 
+		    ConnectionError();
         }
     }
 
@@ -923,6 +1019,7 @@ public class Node
             if (bytesRead <= 0)
             {
                 Debug.Log("ReceivePingCallback error ");
+                ConnectionError();
                 return;
             }
 
@@ -953,8 +1050,8 @@ public class Node
         }
         catch (Exception e)
         {
-            Debug.Log(e.ToString());
-            return;
+            Debug.Log(e.ToString()); 
+		    ConnectionError();
         }
 
         
@@ -971,6 +1068,7 @@ public class Node
             if (bytesRead <= 0)
             {
                 Debug.Log("ReceivePingCallback error ");
+                ConnectionError();
                 return;
             }
 
@@ -988,8 +1086,8 @@ public class Node
         }
         catch (Exception e)
         {
-            Debug.Log(e.ToString());
-            return;
+            Debug.Log(e.ToString()); 
+		    ConnectionError();
         }
 
         SendPongMessage(Ping.nonce);
@@ -1024,6 +1122,7 @@ public class Node
             if (bytesRead <= 0)
             {
                 Debug.Log("ReceiveAddrCallback error ");
+                ConnectionError();
                 return;
             }
 
@@ -1051,8 +1150,8 @@ public class Node
         }
         catch (Exception e)
         {
-            Debug.Log(e.ToString());
-            return;
+            Debug.Log(e.ToString()); 
+		    ConnectionError();
         }
 
         
@@ -1070,7 +1169,8 @@ public class Node
         }
         catch (Exception e)
         {
-            Debug.Log(e.ToString());
+            Debug.Log(e.ToString()); 
+		    ConnectionError();
         }
     }
     private messageHDR createHDR(string cmd, MemoryStream m)
@@ -1121,7 +1221,8 @@ public class Node
         }
         catch (Exception e)
         {
-            Debug.Log(e.ToString());
+            Debug.Log(e.ToString()); 
+		    ConnectionError();
         }
     }
 
@@ -1137,7 +1238,8 @@ public class Node
         }
         catch (Exception e)
         {
-            Debug.Log(e.ToString());
+            Debug.Log(e.ToString()); 
+		    ConnectionError();
         }
     }
 
@@ -1153,6 +1255,7 @@ public class Node
             if (bytesRead<=0)
             {
                 Debug.Log("ReceiveCallback error "+address);
+                ConnectionError();
                 return;
             }
 
@@ -1180,7 +1283,7 @@ public class Node
                 hdr.size = reader.ReadUInt32();
                 hdr.sum = reader.ReadUInt32();
 
-                Debug.Log("packet hdr : " + hdr.magic.ToString("X8") + ", " + hdr.cmd + ", " + hdr.size + ", " + hdr.sum.ToString("X8"));
+                /*Debug.Log("packet hdr : " + hdr.magic.ToString("X8") + ", " + hdr.cmd + ", " + hdr.size + ", " + hdr.sum.ToString("X8"));*/
 
                 switch (hdr.cmd)
                 {
@@ -1210,7 +1313,8 @@ public class Node
         }
         catch (Exception e)
         {
-            Debug.Log(e.ToString());
+            Debug.Log(e.ToString()); 
+		    ConnectionError();
         }
     }
 }
@@ -2376,11 +2480,11 @@ public class Nodes : MonoBehaviour
                         return false;
 
                 }
-                Debug.Log("app Item " + txi.app.name +" "+ txi.item);
+                /*Debug.Log("app Item " + txi.app.name +" "+ txi.item);*/
             }
             else if((txi.childOf = findAppObj(tx.inputs[ni].txid)) != null)
             {
-                Debug.Log("new child of " + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(tx.inputs[ni].txid));
+                /*Debug.Log("new child of " + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(tx.inputs[ni].txid));*/
             }
         }
 
@@ -2481,7 +2585,7 @@ public class Nodes : MonoBehaviour
 
                             appObjs.Add(txi.obj);
 
-                            Debug.Log("new app object " + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(tx.hash));
+                            /*Debug.Log("new app object " + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(tx.hash));*/
 
                             //room.newObj(typeid, tx.outputs[ni].script);
 
@@ -2519,9 +2623,7 @@ public class Nodes : MonoBehaviour
             Buffer.BlockCopy(tx.outputs[0].script, offset, childHash, 0, 32);
             txi.child = findAppObj(childHash);
 
-            if(txi.child != null)
-                Debug.Log("new child " + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(childHash));
-            else
+            if(txi.child == null)
                 Debug.Log("new child not found " + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(childHash));
 
         }
@@ -2753,6 +2855,11 @@ public class Nodes : MonoBehaviour
 
         //NodesList.Sort()
 
+        if(NodesList.Count == 0)
+        {
+            NodesList.Add(new Node(seedNodeAdress, seedNodePort, true, myIP));
+        }
+
         for (int n=0;n<NodesList.Count;n++)
         {
             NodesList[n].current_blk = block_height;
@@ -2767,10 +2874,19 @@ public class Nodes : MonoBehaviour
                         continue;
                     }
                 }
+                else
+                    NodesList.RemoveAt(n);
+
                 continue;
             }
-             
-            
+
+            if (!NodesList[n].versionSent)
+            {
+                NodesList[n].SendVersionMessage(block_height);
+                NodesList[n].versionSent = true;
+            }
+
+
             if ((System.DateTimeOffset.Now.ToUnixTimeMilliseconds() - NodesList[n].lastPingTime) > 120000) 
             { 
                 if (!NodesList[n].waitPong)
@@ -2836,13 +2952,6 @@ public class Nodes : MonoBehaviour
                         if (!txstorage.Exists(new BigInteger(NodesList[n].inventory[nn].hash)))
                             cnt++;
                     }
-                    else if (NodesList[n].inventory[nn].type == 2)
-                    {
-                        if(!blkstorage.Exists(new BigInteger(NodesList[n].inventory[nn].hash)))
-                        {
-                            cnt++;
-                        }
-                    }
                 }
 
                 if(cnt>0)
@@ -2856,14 +2965,6 @@ public class Nodes : MonoBehaviour
                         if (NodesList[n].inventory[nn].type == 1)
                         {
                             if (!txstorage.Exists(new BigInteger(NodesList[n].inventory[nn].hash)))
-                            {
-                                hashList[cnt] = NodesList[n].inventory[nn];
-                                cnt++;
-                            }
-                        }
-                        else if (NodesList[n].inventory[nn].type == 2)
-                        {
-                            if (!blkstorage.Exists(new BigInteger(NodesList[n].inventory[nn].hash)))
                             {
                                 hashList[cnt] = NodesList[n].inventory[nn];
                                 cnt++;
@@ -2955,6 +3056,10 @@ public class Nodes : MonoBehaviour
 
     void OnDestroy()
     {
+        for (int n = 0; n < NodesList.Count; n++)
+        {
+            NodesList[n].Disconnect();
+        }
         blksIdxtorage.Close();
         blkstorage.Close();
         txstorage.Close();

@@ -17,7 +17,10 @@ namespace UnityGLTF.Loader
 {
 	public class WebRequestLoader : IDataLoader
 	{
-		private readonly HttpClient httpClient = new HttpClient();
+		private readonly HttpClient httpClient = new HttpClient(new HttpClientHandler
+		{
+			AutomaticDecompression = DecompressionMethods.GZip
+		});
 		private readonly Uri baseAddress;
 
 		public WebRequestLoader(string rootUri)
@@ -41,7 +44,9 @@ namespace UnityGLTF.Loader
 #if WINDOWS_UWP
 				response = await httpClient.GetAsync(new Uri(baseAddress, gltfFilePath));
 #else
-				var tokenSource = new CancellationTokenSource(30000);
+				var tokenSource = new CancellationTokenSource(60000);
+
+				httpClient.DefaultRequestHeaders.AcceptEncoding.Add(new System.Net.Http.Headers.StringWithQualityHeaderValue("gzip"));
 				response = await httpClient.GetAsync(new Uri(baseAddress, gltfFilePath), tokenSource.Token);
 #endif
 			}

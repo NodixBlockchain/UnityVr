@@ -456,7 +456,7 @@ GameObject:
   - component: {fileID: 5844702731664016423}
   - component: {fileID: 8463151684189325151}
   - component: {fileID: 5549045659249244635}
-  m_Layer: 2
+  m_Layer: 5
   m_Name: Room Name
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -603,7 +603,7 @@ GameObject:
   - component: {fileID: 6537742030126652612}
   - component: {fileID: 1952168481457197894}
   - component: {fileID: 108223264482095540}
-  m_Layer: 2
+  m_Layer: 5
   m_Name: Edit Button
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -724,7 +724,7 @@ GameObject:
   - component: {fileID: 2095730272802181708}
   - component: {fileID: 7909963951503087448}
   - component: {fileID: 3090765139180849126}
-  m_Layer: 2
+  m_Layer: 5
   m_Name: Placeholder
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -804,7 +804,7 @@ GameObject:
   - component: {fileID: 4461978864365243130}
   - component: {fileID: 1778861810403922960}
   - component: {fileID: 1550243449666488100}
-  m_Layer: 2
+  m_Layer: 5
   m_Name: Text
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -884,7 +884,7 @@ GameObject:
   - component: {fileID: 1133435381773620575}
   - component: {fileID: 7663247527407605341}
   - component: {fileID: 1210838321017274210}
-  m_Layer: 2
+  m_Layer: 5
   m_Name: Text
   m_TagString: Untagged
   m_Icon: {fileID: 0}

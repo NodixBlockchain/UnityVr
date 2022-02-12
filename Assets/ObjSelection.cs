@@ -17,7 +17,9 @@ public class ObjSelection : MonoBehaviour
     GameObject panel;
 
     bool hasPhysic = false;
+    List<UnityEngine.XR.InputDevice> HandControllers;
 
+    Vector3 OriGCpos;
     private void Start()
     {
         panel = this.transform.Find("ObjSelectPanel").gameObject;
@@ -31,7 +33,17 @@ public class ObjSelection : MonoBehaviour
         }
         MoveObj = 0;
 
-        
+        HandControllers = new List<UnityEngine.XR.InputDevice>();
+        var desiredCharacteristics = UnityEngine.XR.InputDeviceCharacteristics.HeldInHand;
+        desiredCharacteristics |= UnityEngine.XR.InputDeviceCharacteristics.Right;
+        UnityEngine.XR.InputDevices.GetDevicesWithCharacteristics(desiredCharacteristics, HandControllers);
+
+        foreach (var device in HandControllers)
+        {
+            device.TryGetFeatureValue(UnityEngine.XR.CommonUsages.devicePosition, out OriGCpos);
+        }
+
+
 
         panel.transform.Find("Objname").GetComponent<Text>().text = objMesh.name;
         
@@ -145,9 +157,10 @@ public class ObjSelection : MonoBehaviour
 
     void Update()
     {
-       
+        bool butDown=false;
 
-        if(SelectRoomObject != null)
+
+        if (SelectRoomObject != null)
         {
             var bottom = this.transform.localScale.y * this.GetComponent<RectTransform>().rect.height / 2.0f;
             var objMesh = SelectRoomObject.GetComponent<Collider>();
@@ -159,7 +172,16 @@ public class ObjSelection : MonoBehaviour
             this.transform.position = new Vector3(SelectRoomObject.transform.position.x, bottom + objMesh.bounds.max.y, SelectRoomObject.transform.position.z);
         }
 
-        if (Input.GetMouseButton(0))
+        
+        foreach (var device in HandControllers)
+        {
+            device.TryGetFeatureValue(UnityEngine.XR.CommonUsages.gripButton, out butDown);
+        }
+
+        if (!butDown)
+            butDown = Input.GetMouseButton(0);
+
+        if (butDown)
         {
             var drop = panel.transform.Find("SelectCoord");
             var dd = drop.GetComponent<Dropdown>();
@@ -167,45 +189,95 @@ public class ObjSelection : MonoBehaviour
             switch (dd.value)
             {
                 case 0:
-                    if (MoveObj == 1)
-                        SelectRoomObject.transform.position= new Vector3(SelectRoomObject.transform.position.x + Input.GetAxis("Mouse X") * Time.deltaTime * MoveSpeed, SelectRoomObject.transform.position.y, SelectRoomObject.transform.position.z);
-                    else if (MoveObj == 2)
-                        SelectRoomObject.transform.position = new Vector3(SelectRoomObject.transform.position.x, SelectRoomObject.transform.position.y + Input.GetAxis("Mouse X") * Time.deltaTime * MoveSpeed,SelectRoomObject.transform.position.z);
-                    else if (MoveObj == 3)
-                        SelectRoomObject.transform.position = new Vector3(SelectRoomObject.transform.position.x, SelectRoomObject.transform.position.y, SelectRoomObject.transform.position.z + Input.GetAxis("Mouse X") * Time.deltaTime * MoveSpeed);
+
+                    if(vrRoom.hasHMD())
+                    {
+                        foreach (var device in HandControllers)
+                        {
+                            Vector3  mov;
+                            device.TryGetFeatureValue(UnityEngine.XR.CommonUsages.deviceVelocity, out mov);
+                            SelectRoomObject.transform.position += Camera.main.transform.rotation * mov;
+                        }
+                    }
+                    else
+                    {
+                        if (MoveObj == 1)
+                            SelectRoomObject.transform.position = new Vector3(SelectRoomObject.transform.position.x + Input.GetAxis("Mouse X") * Time.deltaTime * MoveSpeed, SelectRoomObject.transform.position.y, SelectRoomObject.transform.position.z);
+                        else if (MoveObj == 2)
+                            SelectRoomObject.transform.position = new Vector3(SelectRoomObject.transform.position.x, SelectRoomObject.transform.position.y + Input.GetAxis("Mouse X") * Time.deltaTime * MoveSpeed, SelectRoomObject.transform.position.z);
+                        else if (MoveObj == 3)
+                            SelectRoomObject.transform.position = new Vector3(SelectRoomObject.transform.position.x, SelectRoomObject.transform.position.y, SelectRoomObject.transform.position.z + Input.GetAxis("Mouse X") * Time.deltaTime * MoveSpeed);
+                    }
 
                     panel.transform.Find("InputX").GetComponent<InputField>().text = SelectRoomObject.transform.position.x.ToString();
                     panel.transform.Find("InputY").GetComponent<InputField>().text = SelectRoomObject.transform.position.y.ToString();
                     panel.transform.Find("InputZ").GetComponent<InputField>().text = SelectRoomObject.transform.position.z.ToString();
                     break;
                 case 1:
-                    if (MoveObj == 1)
-                        SelectRoomObject.transform.Rotate(Input.GetAxis("Mouse X") * Time.deltaTime * RotSpeed, 0, 0);
-                    else if (MoveObj == 2)
-                        SelectRoomObject.transform.Rotate(0, Input.GetAxis("Mouse X") * Time.deltaTime * RotSpeed, 0);
-                    else if (MoveObj == 3)
-                        SelectRoomObject.transform.Rotate(0, 0, Input.GetAxis("Mouse X") * Time.deltaTime * RotSpeed);
+                    if (vrRoom.hasHMD())
+                    {
+                        foreach (var device in HandControllers)
+                        {
+                            Vector3 amov;
+                            device.TryGetFeatureValue(UnityEngine.XR.CommonUsages.deviceAngularVelocity, out amov);
+                            SelectRoomObject.transform.rotation *=  Quaternion.Euler(amov) ;
+                        }
+                    }
+                    else
+                    {
+                        if (MoveObj == 1)
+                            SelectRoomObject.transform.Rotate(Input.GetAxis("Mouse X") * Time.deltaTime * RotSpeed, 0, 0);
+                        else if (MoveObj == 2)
+                            SelectRoomObject.transform.Rotate(0, Input.GetAxis("Mouse X") * Time.deltaTime * RotSpeed, 0);
+                        else if (MoveObj == 3)
+                            SelectRoomObject.transform.Rotate(0, 0, Input.GetAxis("Mouse X") * Time.deltaTime * RotSpeed);
+                    }
 
                     panel.transform.Find("InputX").GetComponent<InputField>().text = SelectRoomObject.transform.rotation.x.ToString();
                     panel.transform.Find("InputY").GetComponent<InputField>().text = SelectRoomObject.transform.rotation.y.ToString();
                     panel.transform.Find("InputZ").GetComponent<InputField>().text = SelectRoomObject.transform.rotation.z.ToString();
                break;
                 case 2:
-                    float scaleC = 1.0f;
+                    if (vrRoom.hasHMD())
+                    {
+                        foreach (var device in HandControllers)
+                        {
+                            Vector3 mov;
+                            var mesh = SelectRoomObject.GetComponentInChildren<MeshFilter>();
+                            device.TryGetFeatureValue(UnityEngine.XR.CommonUsages.deviceVelocity, out mov);
 
-                    if (Input.GetAxis("Mouse X") < 0)
-                        scaleC = 0.9f;
-                    else if (Input.GetAxis("Mouse X") > 0)
-                        scaleC = 1.1f;
+                            mov = Camera.main.transform.rotation * Quaternion.Inverse(SelectRoomObject.transform.rotation) * mov;
 
-                    var mesh = SelectRoomObject.GetComponentInChildren<MeshFilter>();
+                            mov = Vector3.Max(mov, new Vector3(-1.0f, -1.0f, -1.0f));
+                            mov = Vector3.Min(mov, new Vector3(1.0f, 1.0f, 1.0f));
+                                                     
 
-                    if (MoveObj == 1)
-                        mesh.transform.localScale = new Vector3(mesh.transform.localScale.x * scaleC, mesh.transform.localScale.y, mesh.transform.localScale.z);
-                    else if (MoveObj == 2)
-                        mesh.transform.localScale = new Vector3(mesh.transform.localScale.x, mesh.transform.localScale.y * scaleC , mesh.transform.localScale.z);
-                    else if (MoveObj == 3)
-                        mesh.transform.localScale = new Vector3(mesh.transform.localScale.x, mesh.transform.localScale.y, mesh.transform.localScale.z * scaleC );
+                            mov = mov + new Vector3(1.0f, 1.0f, 1.0f);
+
+                            
+
+
+                            mesh.transform.localScale = new Vector3(mesh.transform.localScale.x * mov.x, mesh.transform.localScale.y * mov.y, mesh.transform.localScale.z * mov.z);
+                        }
+                    }
+                    else
+                    {
+                        float scaleC = 1.0f;
+
+                        if (Input.GetAxis("Mouse X") < 0)
+                            scaleC = 0.9f;
+                        else if (Input.GetAxis("Mouse X") > 0)
+                            scaleC = 1.1f;
+
+                        var mesh = SelectRoomObject.GetComponentInChildren<MeshFilter>();
+
+                        if (MoveObj == 1)
+                            mesh.transform.localScale = new Vector3(mesh.transform.localScale.x * scaleC, mesh.transform.localScale.y, mesh.transform.localScale.z);
+                        else if (MoveObj == 2)
+                            mesh.transform.localScale = new Vector3(mesh.transform.localScale.x, mesh.transform.localScale.y * scaleC, mesh.transform.localScale.z);
+                        else if (MoveObj == 3)
+                            mesh.transform.localScale = new Vector3(mesh.transform.localScale.x, mesh.transform.localScale.y, mesh.transform.localScale.z * scaleC);
+                    }
 
                     panel.transform.Find("InputX").GetComponent<InputField>().text = SelectRoomObject.transform.localScale.x.ToString();
                     panel.transform.Find("InputY").GetComponent<InputField>().text = SelectRoomObject.transform.localScale.y.ToString();

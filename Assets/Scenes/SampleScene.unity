@@ -196,7 +196,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 032d347a063161e4fbbdeb086f88d721, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  seedNodeAdress: 192.168.0.103
+  seedNodeAdress: nodix.eu
   seedNodePort: 16819
 --- !u!4 &38116314
 Transform:
@@ -981,7 +981,7 @@ GameObject:
   - component: {fileID: 644109508}
   - component: {fileID: 644109507}
   - component: {fileID: 644109506}
-  m_Layer: 2
+  m_Layer: 5
   m_Name: Viewport
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -1762,7 +1762,7 @@ MonoBehaviour:
       m_Interactions: 
       m_SingletonActionBindings: []
       m_Flags: 0
-    m_Reference: {fileID: -6131295136447488360, guid: c348712bda248c246b8c49b3db54643f, type: 3}
+    m_Reference: {fileID: -5982496924579745919, guid: c348712bda248c246b8c49b3db54643f, type: 3}
   m_SelectActionValue:
     m_UseReference: 0
     m_Action:
@@ -2955,7 +2955,7 @@ MonoBehaviour:
       m_Calls: []
   m_TeleportationProvider: {fileID: 0}
   m_MatchOrientation: 0
-  m_TeleportTrigger: 0
+  m_TeleportTrigger: 2
   m_Teleporting:
     m_PersistentCalls:
       m_Calls: []
@@ -3346,9 +3346,9 @@ MonoBehaviour:
   SphereEditMat: {fileID: 2100000, guid: 48752f96bd0a6eb4b92b42b8922434d7, type: 2}
   roomName: 
   wallHeight: 10
-  server: 192.168.0.103
+  server: nodix.eu
   floorPlane: {fileID: 1278510965}
-  mainPanel: {fileID: 0}
+  mainPanel: {fileID: 2004535454}
   roomHash: 
   sceneTypeId: 52
   wallTypeId: 31
@@ -4171,7 +4171,7 @@ GameObject:
   - component: {fileID: 1797586304}
   - component: {fileID: 1797586303}
   - component: {fileID: 1797586302}
-  m_Layer: 2
+  m_Layer: 5
   m_Name: Content
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -4584,7 +4584,6 @@ GameObject:
   - component: {fileID: 1918548242}
   - component: {fileID: 1918548241}
   - component: {fileID: 1918548240}
-  - component: {fileID: 1918548244}
   m_Layer: 0
   m_Name: RightHand Controller
   m_TagString: Untagged
@@ -4970,10 +4969,10 @@ MonoBehaviour:
   m_TrackingStateAction:
     m_UseReference: 0
     m_Action:
-      m_Name: 
+      m_Name: Tracking State
       m_Type: 0
       m_ExpectedControlType: 
-      m_Id: 
+      m_Id: 435fae26-a495-460a-ba3f-ef8e787261e8
       m_Processors: 
       m_Interactions: 
       m_SingletonActionBindings: []
@@ -4990,21 +4989,21 @@ MonoBehaviour:
       m_Interactions: 
       m_SingletonActionBindings: []
       m_Flags: 0
-    m_Reference: {fileID: 187161793506945269, guid: c348712bda248c246b8c49b3db54643f, type: 3}
+    m_Reference: {fileID: -8061240218431744966, guid: c348712bda248c246b8c49b3db54643f, type: 3}
   m_SelectActionValue:
     m_UseReference: 0
     m_Action:
-      m_Name: 
+      m_Name: Select Action Value
       m_Type: 0
       m_ExpectedControlType: 
-      m_Id: 
+      m_Id: dc56fdb9-e9a3-4620-8565-e6828fe90704
       m_Processors: 
       m_Interactions: 
       m_SingletonActionBindings: []
       m_Flags: 0
     m_Reference: {fileID: 0}
   m_ActivateAction:
-    m_UseReference: 0
+    m_UseReference: 1
     m_Action:
       m_Name: Activate
       m_Type: 0
@@ -5014,14 +5013,14 @@ MonoBehaviour:
       m_Interactions: 
       m_SingletonActionBindings: []
       m_Flags: 0
-    m_Reference: {fileID: 0}
+    m_Reference: {fileID: -8061240218431744966, guid: c348712bda248c246b8c49b3db54643f, type: 3}
   m_ActivateActionValue:
     m_UseReference: 0
     m_Action:
-      m_Name: 
+      m_Name: Activate Action Value
       m_Type: 0
       m_ExpectedControlType: 
-      m_Id: 
+      m_Id: 89374904-24c6-4025-be44-2fcc6ea10b89
       m_Processors: 
       m_Interactions: 
       m_SingletonActionBindings: []
@@ -5042,10 +5041,10 @@ MonoBehaviour:
   m_UIPressActionValue:
     m_UseReference: 0
     m_Action:
-      m_Name: 
+      m_Name: UI Press Action Value
       m_Type: 0
       m_ExpectedControlType: 
-      m_Id: 
+      m_Id: 85423fef-1e63-45e4-93db-592f984c853c
       m_Processors: 
       m_Interactions: 
       m_SingletonActionBindings: []
@@ -5088,47 +5087,6 @@ MonoBehaviour:
       m_Flags: 0
     m_Reference: {fileID: 875253871413052681, guid: c348712bda248c246b8c49b3db54643f, type: 3}
   m_ButtonPressPoint: 0.5
---- !u!114 &1918548244
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1918548238}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 2213c36610e3b1c4bbf886810ed9db12, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  m_System: {fileID: 0}
-  m_TurnAmount: 45
-  m_DebounceTime: 0.5
-  m_EnableTurnLeftRight: 1
-  m_EnableTurnAround: 1
-  m_LeftHandSnapTurnAction:
-    m_UseReference: 1
-    m_Action:
-      m_Name: Left Hand Snap Turn
-      m_Type: 0
-      m_ExpectedControlType: 
-      m_Id: a1d07c24-ca50-422a-a23f-685d9fabf63b
-      m_Processors: 
-      m_Interactions: 
-      m_SingletonActionBindings: []
-      m_Flags: 0
-    m_Reference: {fileID: 1010738217276881514, guid: c348712bda248c246b8c49b3db54643f, type: 3}
-  m_RightHandSnapTurnAction:
-    m_UseReference: 1
-    m_Action:
-      m_Name: Right Hand Snap Turn
-      m_Type: 0
-      m_ExpectedControlType: 
-      m_Id: a7b54797-6974-4f75-81d0-42b9c15ef1e0
-      m_Processors: 
-      m_Interactions: 
-      m_SingletonActionBindings: []
-      m_Flags: 0
-    m_Reference: {fileID: -6493913391331992944, guid: c348712bda248c246b8c49b3db54643f, type: 3}
 --- !u!1 &1927405950
 GameObject:
   m_ObjectHideFlags: 0

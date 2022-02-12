@@ -55,12 +55,10 @@ class objNode
         nodeTx = null;
         obj = Obj;
         obj.SetActive(true);
-        loaded = false;
     }
     public GameObject obj;
     public Transaction nodeTx;
     public Transaction nodePTx;
-    public bool loaded;
 }
 
 class gltfRef
@@ -282,6 +280,9 @@ class Blinker : MonoBehaviour
             mrs.materials[n].SetColor("_Color", new Color(matCols[n].r * alpha, matCols[n].g * alpha, matCols[n].b * alpha, matCols[n].a * alpha));
         }
 
+
+
+
     }
 
     void OnDestroy()
@@ -375,6 +376,7 @@ public class vrRoom : MonoBehaviour
     private bool outScope = false;
     private bool SetWallObj = false;
     private bool lastTrigger = false;
+    private bool lastgripButton = false;
     private bool hasHeadset = false;
 
 
@@ -553,82 +555,6 @@ public class vrRoom : MonoBehaviour
         return false;
 
     }
-    /*
-        public bool newObj(uint type, byte[] data)
-    {
-        if( (type & 0x00FFFFFF) == userTypeId)
-        {
-            float x;
-            float y;
-            float z;
-            float w;
-            long tlen;
-            byte opcode;
-
-            roomUser user =new roomUser ();
-
-            MemoryStream buffer = new MemoryStream(data);
-            BinaryReader reader = new BinaryReader(buffer);
-
-            int pkLen = reader.ReadByte();
-
-            if (pkLen != 33)
-                return false;
-
-
-            user.pkey = reader.ReadBytes(33);
-
-            user.addr = WalletAddress.pub2addr(new ECPublicKeyParameters(domainParams.Curve.DecodePoint(user.pkey), domainParams));
-
-            opcode = reader.ReadByte();
-            if (opcode != 0xAC)
-                return false;
-
-            opcode = reader.ReadByte();
-
-            if (opcode != 0x6A)
-                return false;
-
-            opcode = reader.ReadByte();
-           
-
-            if (opcode == 0x4c)
-                tlen = (long)reader.ReadByte();
-            else if (opcode == 0x4d)
-                tlen = (long)reader.ReadUInt16();
-            else if (opcode == 0x4e)
-                tlen = (long)reader.ReadUInt32();
-            else
-                return false;
-            
-            long nlen = Nodes.readVINT(reader);
-
-            user.name = new string(reader.ReadChars((int)nlen));
-            user.avatar = reader.ReadBytes(32);
-
-            x = reader.ReadSingle();
-            y = reader.ReadSingle();
-            z = reader.ReadSingle();
-
-            user.pos = new Vector3(x, y, z);
-
-            x = reader.ReadSingle();
-            y = reader.ReadSingle();
-            z = reader.ReadSingle();
-            w = reader.ReadSingle();
-
-            user.rot = new Quaternion(x, y, z, w);
-
-            Debug.Log("new user " + user.name + " " + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(user.avatar) + " " + user.pos.ToString() + " " + user.rot.eulerAngles.ToString());
-
-            newUser(user);
-
-            return true;
-        }
-
-        return true;
-    }
-    */
 
     public void resetRoom()
     {
@@ -655,6 +581,9 @@ public class vrRoom : MonoBehaviour
         }
         this.wallSegments = new List<WallSegment>();
         this.roomHash = null;
+
+        if (ObjPannel != null)
+            closeObjPanel();
     }
 
 
@@ -722,7 +651,7 @@ public class vrRoom : MonoBehaviour
 
     public void newWallSeg(Vector2 start, string hash)
     {
-        string URL = "http://" + server + baseURL + "/obj/" + hash;
+        
 
         if (wallSegments.Count>0)
         {
@@ -731,14 +660,18 @@ public class vrRoom : MonoBehaviour
 
         WallSegment newSeg=new WallSegment();
 
-        newSeg.wallObj = new GameObject("Wall " + hash);
 
+
+
+        /*
         Debug.Log("load wall seg " + URL);
-
+        string URL = "http://" + server + baseURL + "/obj/" + hash;
+        newSeg.wallObj = new GameObject("Wall " + hash);
         newSeg.wallObj.AddComponent<UnityGLTF.GLTFComponent>().GLTFUri = URL;
         newSeg.wallObj.GetComponent<UnityGLTF.GLTFComponent>().Timeout = 120;
         newSeg.wallObj.GetComponent<UnityGLTF.GLTFComponent>().Collider = UnityGLTF.GLTFSceneImporter.ColliderType.Box;
         newSeg.wallObj.SetActive(false);
+        */
 
         newSeg.defObj = GameObject.CreatePrimitive(PrimitiveType.Cube);
         newSeg.defObj.GetComponentInChildren<Renderer>().material = wallSegMat;
@@ -761,15 +694,18 @@ public class vrRoom : MonoBehaviour
 
         for(int nseg = 0; nseg< wallSegments.Count;nseg ++)
         { 
-            Vector2[] pos = wallSegments[nseg].getArray(10.0f);
+            //Vector2[] pos = wallSegments[nseg].getArray(10.0f);
             Vector2 delta = wallSegments[nseg].getDirection();
             double angle = wallSegments[nseg].getAngle();
-            float scaleZ = delta.magnitude / (10.0f * pos.Length);
+            
 
             wallSegments[nseg].defObj.transform.position = new Vector3(wallSegments[nseg].start.x + delta.x / 2.0f, wallHeight / 2.0f, wallSegments[nseg].start.y + delta.y / 2.0f);
             wallSegments[nseg].defObj.transform.localScale = new Vector3(4.0f, wallHeight, delta.magnitude);
             wallSegments[nseg].defObj.transform.rotation = Quaternion.Euler(0.0f, (float)(angle * 180.0f / Math.PI), 0.0f);
 
+            /*
+            Vector2[] pos = wallSegments[nseg].getArray(10.0f);
+            float scaleZ = delta.magnitude / (10.0f * pos.Length);
             for (int n = 0; n < pos.Length; n++)
             {
                 objNode node = new objNode(GameObject.Instantiate<GameObject>(wallSegments[nseg].wallObj));
@@ -785,8 +721,10 @@ public class vrRoom : MonoBehaviour
                 wallSegments[nseg].gltfObjs.objs.Add(node);
                 
             }
-
             Destroy(wallSegments[nseg].wallObj);
+            */
+
+
         }
 
         createFloor();
@@ -884,7 +822,11 @@ public class vrRoom : MonoBehaviour
                 floorPlane.SetActive(true);
 
             var CameraOffset = GameObject.Find("Camera Offset");
+
+            CameraOffset.GetComponent<CharacterController>().enabled = false;
             CameraOffset.transform.position = origPos;
+            CameraOffset.GetComponent<CharacterController>().enabled = true;
+
             CameraOffset.transform.rotation = Quaternion.Euler(new Vector3(-12.0f, 0, 0));
 
             Destroy(EditWallPanel);
@@ -993,7 +935,7 @@ public class vrRoom : MonoBehaviour
         CreateWalls = false;
     }
 
-    public bool hasHMD()
+    public static bool hasHMD()
     {
         var HMDControllers = new List<UnityEngine.XR.InputDevice>();
         var desiredCharacteristics = UnityEngine.XR.InputDeviceCharacteristics.HeadMounted;
@@ -1025,7 +967,7 @@ public class vrRoom : MonoBehaviour
             SetLayerRecursively(child.gameObject, on);
         }
     }
-
+    /*
     void updateWalls()
     {
        for (int n = 0; n < wallSegments.Count; n++)
@@ -1056,6 +998,50 @@ public class vrRoom : MonoBehaviour
            }
        }
     }
+    */
+
+    bool detectSceneObjHit(Ray ray)
+    {
+        RaycastHit hit=new RaycastHit();
+
+        for (int n = 0; n < sceneObjects.Count; n++)
+        {
+            for (int nn = 0; nn < sceneObjects[n].objs.Count; nn++)
+            {
+                var meshes = sceneObjects[n].objs[nn].obj.GetComponentsInChildren<MeshFilter>();
+
+                foreach (MeshFilter mesh in meshes)
+                {
+                    var box = mesh.GetComponent<BoxCollider>();
+                    if (box.Raycast(ray, out hit, 1000.0f))
+                    {
+                        GameObject collid = hit.collider.gameObject;
+
+                        if (hoverRoomObject == null)
+                        {
+                            hoverRoomObject = collid;
+                            hoverRoomObject.AddComponent<Blinker>();
+                        }
+                        else if (hoverRoomObject != collid)
+                        {
+                            Destroy(hoverRoomObject.GetComponent<Blinker>());
+                            hoverRoomObject = collid;
+                            hoverRoomObject.AddComponent<Blinker>();
+                        }
+                        return true;
+                    }
+                }
+            }
+        }
+
+
+        if (hoverRoomObject != null)
+        {
+            Destroy(hoverRoomObject.GetComponent<Blinker>());
+            hoverRoomObject = null;
+        }
+        return false;
+    }
 
     void Update()
     {
@@ -1063,18 +1049,25 @@ public class vrRoom : MonoBehaviour
         RaycastHit hit = new RaycastHit();
         GameObject hitObj = null;
 
-        updateWalls();
+
         updateLoading();
 
 
         if (EditRoomWall)
         {
+            /*
             List<UnityEngine.XR.InputDevice> devices = new List<UnityEngine.XR.InputDevice>();
-
             UnityEngine.XR.InputDevices.GetDevicesWithRole(UnityEngine.XR.InputDeviceRole.RightHanded, devices);
+            */
 
-            foreach (var device in devices)
+            var HandControllers = new List<UnityEngine.XR.InputDevice>();
+            var desiredCharacteristics = UnityEngine.XR.InputDeviceCharacteristics.HeldInHand;
+
+            UnityEngine.XR.InputDevices.GetDevicesWithCharacteristics(desiredCharacteristics, HandControllers);
+
+            foreach (var device in HandControllers)
             {
+
                 bool Trigger;
 
                 if (device.TryGetFeatureValue(UnityEngine.XR.CommonUsages.triggerButton, out Trigger))
@@ -1162,7 +1155,6 @@ public class vrRoom : MonoBehaviour
                                 /*node.obj.AddComponent<BoxCollider>().size = mesh.bounds.size;*/
 
                                 wallSegments[segNum].gltfObjs.objs.Add(node);
-                                node.loaded = true;
                             }
 
                             wallSegments[segNum].defObj.SetActive(false);
@@ -1264,65 +1256,53 @@ public class vrRoom : MonoBehaviour
         }
         else
         {
-            if (hasHeadset)
+            Ray ray;
+            if ((hasHeadset)&& (RightInteractor != null))
             {
-                if (RightInteractor != null)
+               Vector3[] points = new Vector3[2];
+               int nPoints;
+
+               RightInteractor.GetLinePoints(ref points, out nPoints);
+
+               ray = new Ray(points[0], points[1] - points[0]);
+
+               var HandControllers = new List<UnityEngine.XR.InputDevice>();
+               var desiredCharacteristics = UnityEngine.XR.InputDeviceCharacteristics.HeldInHand | UnityEngine.XR.InputDeviceCharacteristics.Right;
+
+               UnityEngine.XR.InputDevices.GetDevicesWithCharacteristics(desiredCharacteristics, HandControllers);
+
+               foreach (var device in HandControllers)
+               {
+                   bool gripButton;
+
+                   if (device.TryGetFeatureValue(UnityEngine.XR.CommonUsages.gripButton, out gripButton))
+                   {
+                       if (gripButton != lastgripButton)
+                           button = gripButton;
+
+                       lastgripButton = gripButton;
+                   }
+               }
+
+                /*
+                if (RightInteractor.TryGetCurrent3DRaycastHit(out hit))
                 {
-                    if (RightInteractor.TryGetCurrent3DRaycastHit(out hit))
-                    {
-                        hitObj = hit.collider.gameObject;
-                    }
+                    hitObj = hit.collider.gameObject;
                 }
+                */
+
             }
             else
             {
-                Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
-                bool hasHit=false;
-
-                for (int n=0;n<sceneObjects.Count;n++)
-                {
-                    for (int nn = 0; nn < sceneObjects[n].objs.Count; nn++)
-                    {
-                        var meshes = sceneObjects[n].objs[nn].obj.GetComponentsInChildren<MeshFilter>();
-
-                        foreach(MeshFilter mesh in meshes)
-                        {
-                            var box = mesh.GetComponent<BoxCollider>();
-                            if(box.Raycast(ray, out hit, 1000.0f))
-                            {
-                                GameObject collid = hit.collider.gameObject;
-
-                                if (hoverRoomObject == null)
-                                {
-                                    hoverRoomObject = collid;
-                                    hoverRoomObject.AddComponent<Blinker>();
-                                }
-                                else if (hoverRoomObject != collid)
-                                {
-                                    Destroy(hoverRoomObject.GetComponent<Blinker>());
-                                    hoverRoomObject = collid;
-                                    hoverRoomObject.AddComponent<Blinker>();
-                                }
-                                hasHit = true;
-                                break;
-                            }
-                        }
-                    }
-                }
-                if ((!hasHit) &&(hoverRoomObject != null))
-                {
-                    Destroy(hoverRoomObject.GetComponent<Blinker>());
-                    hoverRoomObject = null;
-                }
+                ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+                button = Input.GetMouseButtonDown(0);
             }
 
-            if (Input.GetMouseButtonDown(0))
+            detectSceneObjHit(ray);
+
+            if ((button)&& (hoverRoomObject != null))
             {
-                if (hoverRoomObject != null)
-                {
-                    showObjPannel();
-                    
-                }
+                showObjPannel();
             }
         }
 
@@ -1647,57 +1627,76 @@ public class vrRoom : MonoBehaviour
 
     public void updateLoading()
     {
-        int total = 0;
-        bool allLoad;
-
-
         if (Loading == null)
             return;
 
-        for (int n = 0; n < wallSegments.Count; n++)
+        if (loadingRoom.nObjLoaded < loadingRoom.objects.Length)
         {
-            if (wallSegments[n].gltfObjs == null)
+            if (sceneObjects[loadingRoom.nObjLoaded].objs[0].obj.GetComponent<UnityGLTF.GLTFComponent>().LastLoadedScene != null)
             {
-                total++;
-                continue;
-            }
+                loadingRoom.nObjLoaded++;
 
-            allLoad = true;
-            for (int nn = 0; nn < wallSegments[n].gltfObjs.objs.Count; nn++)
-            {
-                if (!wallSegments[n].gltfObjs.objs[nn].loaded)
-                {
-                    allLoad = false;
-                    break;
-                }
+                if(loadingRoom.nObjLoaded < loadingRoom.objects.Length)
+                    this.loadScene(loadingRoom.objects[loadingRoom.nObjLoaded].objHash);
             }
-
-            if(allLoad)
-                total++;
         }
-
-
-        for (int n = 0; n < sceneObjects.Count; n++)
+        else
         {
-            allLoad = true;
-            for (int nn = 0; nn < sceneObjects[n].objs.Count; nn++)
+            if(wallSegments[loadingRoom.curLoadWall].wallObj == null)
             {
-                if(sceneObjects[n].objs[nn].obj.GetComponent<UnityGLTF.GLTFComponent>().LastLoadedScene==null)
-                {
-                    allLoad = false;
-                    break;
-                }
+                string URL = "http://" + server + baseURL + "/obj/" + wallSegments[loadingRoom.curLoadWall].gltfObjs.rootHash;
+
+                wallSegments[loadingRoom.curLoadWall].wallObj = new GameObject("Wall " + wallSegments[loadingRoom.curLoadWall].gltfObjs.rootHash);
+                wallSegments[loadingRoom.curLoadWall].wallObj.AddComponent<UnityGLTF.GLTFComponent>().GLTFUri = URL;
+                wallSegments[loadingRoom.curLoadWall].wallObj.GetComponent<UnityGLTF.GLTFComponent>().Timeout = 120;
+                wallSegments[loadingRoom.curLoadWall].wallObj.GetComponent<UnityGLTF.GLTFComponent>().Collider = UnityGLTF.GLTFSceneImporter.ColliderType.Box;
+                //wallSegments[loadingRoom.curLoadWall].wallObj.SetActive(false);
             }
+            else if(wallSegments[loadingRoom.curLoadWall].wallObj.GetComponent<UnityGLTF.GLTFComponent>().LastLoadedScene != null)
+            {
+                int nextwall = -1;
+                for (int nc = 0; nc < wallSegments.Count; nc++)
+                {
+                    if (wallSegments[nc].gltfObjs.rootHash == wallSegments[loadingRoom.curLoadWall].gltfObjs.rootHash)
+                    {
+                        Vector2 delta = wallSegments[nc].getDirection();
+                        double angle = wallSegments[nc].getAngle();
+                        Vector2[] pos = wallSegments[nc].getArray(10.0f);
+                        float scaleZ = delta.magnitude / (10.0f * pos.Length);
+                        for (int n = 0; n < pos.Length; n++)
+                        {
+                            objNode node = new objNode(GameObject.Instantiate<GameObject>(wallSegments[loadingRoom.curLoadWall].wallObj));
+                            node.obj.transform.SetParent(this.transform, false);
+                            node.obj.transform.position = new Vector3(pos[n].x, wallHeight / 2.0f, pos[n].y);
+                            node.obj.transform.localScale = new Vector3(10.0f * scaleZ, wallHeight, 10.0f);
+                            node.obj.transform.rotation = Quaternion.Euler(new Vector3(0, (float)((angle * 180.0) / Math.PI) + 90.0f, 0));
+                            var mesh = node.obj.GetComponentInChildren<MeshFilter>().mesh;
+                            node.obj.transform.position = new Vector3(node.obj.transform.position.x, -mesh.bounds.min.y * wallHeight, node.obj.transform.position.z);
+                            wallSegments[nc].defObj.SetActive(false);
 
-            if (allLoad)
-                total++;
+                            wallSegments[nc].gltfObjs.objs.Add(node);
+                        }
+                        loadingRoom.nWallsLoaded++;
+                    }
+                    else if ((nextwall == -1)&&(wallSegments[nc].gltfObjs.objs.Count==0))
+                        nextwall = nc;
+                }
+                Destroy(wallSegments[loadingRoom.curLoadWall].wallObj);
+                wallSegments[loadingRoom.curLoadWall].wallObj = null;
+
+                if (nextwall >= 0)
+                    loadingRoom.curLoadWall = nextwall;
+
+            }
         }
-        Loading.GetComponentInChildren<Slider>().value = total;
+      
+        Loading.GetComponentInChildren<Slider>().value = loadingRoom.nObjLoaded+ loadingRoom.nWallsLoaded;
 
-        if(total==(wallSegments.Count + sceneObjects.Count))
+        if((loadingRoom.nObjLoaded == sceneObjects.Count ) &&( loadingRoom.nWallsLoaded == wallSegments.Count ))
         {
             Destroy(Loading);
             Loading=null;
+            loadingRoom = null;
         }
             
     }
@@ -1728,7 +1727,7 @@ public class vrRoom : MonoBehaviour
         myref.objs.Add(on);
         this.sceneObjects.Add(myref);
     }
-
+    Room loadingRoom;
 
     public IEnumerator loadRoom(string hash)
     {
@@ -1753,35 +1752,33 @@ public class vrRoom : MonoBehaviour
                 
                 Debug.Log("ROOM  " + hash + " : \nReceived: " + webRequest.downloadHandler.text);
 
-                
-
-                var mroom = JsonUtility.FromJson<Room>(webRequest.downloadHandler.text);
-                if (mroom.objects == null)
+                loadingRoom = JsonUtility.FromJson<Room>(webRequest.downloadHandler.text);
+                if (loadingRoom.objects == null)
                 {
                     Debug.Log("ROOM  no objects");
+                    loadingRoom = null;
                 }
-                else
-                {
-                    for (int n = 0; n < mroom.objects.Length; n++)
-                    {
-                        this.loadScene(mroom.objects[n].objHash);
-                    }
-                }
-
-                if (mroom.walls == null)
+                if (loadingRoom.walls == null)
                 {
                     Debug.Log("ROOM  no walls");
+                    loadingRoom = null;
                 }
                 else
                 {
-                    for (int n = 0; n < mroom.walls.Length; n++)
+                    for (int n = 0; n < loadingRoom.walls.Length; n++)
                     {
-                        this.newWallSeg(new Vector2(mroom.walls[n].start[0], mroom.walls[n].start[1]), mroom.walls[n].objHash.objHash);
+                        this.newWallSeg(new Vector2(loadingRoom.walls[n].start[0], loadingRoom.walls[n].start[1]), loadingRoom.walls[n].objHash.objHash);
                     }
-
                     this.buildWalls();
                 }
+
                 this.showLoading();
+
+                loadingRoom.nObjLoaded = 0;
+                loadingRoom.nWallsLoaded= 0;
+
+                this.loadScene(loadingRoom.objects[0].objHash); 
+
 
                 break;
         }
@@ -2370,159 +2367,6 @@ public class vrRoom : MonoBehaviour
                 break;
         }
     }
-
-    /*
-    IEnumerator addRoomUserTx()
-    {
-        string URL = "http://" + this.server + "/jsonrpc";
-
-        string addchild = "{id:1 , jsonrpc: \"2.0\", method:\"addchildobj\", params : [\"" + appName + "\",\"" + this.roomHash + "\",\"users\",\"" + this.userTx.txid + "\",  [], 0, 0xFFFFFFFF]}";
-        UnityWebRequest webRequest = UnityWebRequest.Put(URL, addchild);
-        webRequest.SetRequestHeader("Content-Type", "application/json");
-
-        // Request and wait for the desired page.
-        yield return webRequest.SendWebRequest();
-        switch (webRequest.result)
-        {
-            case UnityWebRequest.Result.ConnectionError:
-            case UnityWebRequest.Result.DataProcessingError:
-                Debug.Log("addRoomUserTx  " + addchild + " : Error: " + webRequest.error);
-                this.sendingPos = false;
-                break;
-            case UnityWebRequest.Result.ProtocolError:
-                Debug.Log("addRoomUserTx  " + addchild + " : HTTP Error: " + webRequest.error);
-                this.sendingPos = false;
-                break;
-            case UnityWebRequest.Result.Success:
-
-                Debug.Log("addRoomUserTx " + addchild + " : \nReceived: " + webRequest.downloadHandler.text);
-                Transaction myTransaction = JsonUtility.FromJson<RPCTransaction>(webRequest.downloadHandler.text).result.transaction;
-                Debug.Log("addRoomUserTx myTransaction " + myTransaction.txid + " " + this.userTx.txid);
-                myTransaction.issigned = false;
-                StartCoroutine(signTxInputs(myTransaction));
-
-                break;
-        }
-    }
-
-    IEnumerator SubmitUserTx()
-    {
-        string URL = "http://" + this.server + "/jsonrpc";
-        string submittx = "{id:1 , jsonrpc: \"2.0\", method:\"submittx\", params : [\"" + this.userTx.txid + "\"]}";
-        UnityWebRequest webRequest = UnityWebRequest.Put(URL, submittx);
-        webRequest.SetRequestHeader("Content-Type", "application/json");
-        // Request and wait for the desired page.
-        yield return webRequest.SendWebRequest();
-
-        switch (webRequest.result)
-        {
-            case UnityWebRequest.Result.ConnectionError:
-            case UnityWebRequest.Result.DataProcessingError:
-                Debug.Log("SubmitUserTx " + submittx + " : Error: " + webRequest.error);
-                this.sendingPos = false;
-                break;
-            case UnityWebRequest.Result.ProtocolError:
-                Debug.Log("SubmitUserTx " + submittx + " : HTTP Error: " + webRequest.error);
-                this.sendingPos = false;
-                break;
-            case UnityWebRequest.Result.Success:
-                Debug.Log("SubmitUserTx " + submittx + " : \nReceived: " + webRequest.downloadHandler.text);
-
-                StartCoroutine(addRoomUserTx());
-                
-                break;
-        }
-    }
-
-
-    IEnumerator signUserTxInputs()
-    {
-        string URL = "http://" + this.server + "/jsonrpc";
-
-
-        for (int n = 0; n < this.userTx.txsin.Count; n++)
-        {
-            byte[] derSign = this.mykey.Sign(Org.BouncyCastle.Utilities.Encoders.Hex.Decode(this.userTx.txsin[n].signHash), this.domainParams);
-            string signtx = "{id:1 , jsonrpc: \"2.0\", method: \"signtxinput\", params : [\"" + this.userTx.txid + "\"," + n.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(derSign) + "\",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(this.mykey.getPub().Q.GetEncoded(true)) + "\"]}";
-            UnityWebRequest webRequest = UnityWebRequest.Put(URL, signtx);
-            webRequest.SetRequestHeader("Content-Type", "application/json");
-            // Request and wait for the desired page.
-            yield return webRequest.SendWebRequest();
-
-            switch (webRequest.result)
-            {
-                case UnityWebRequest.Result.ConnectionError:
-                case UnityWebRequest.Result.DataProcessingError:
-                    Debug.Log("signUserTxInputs  " + signtx + " : Error: " + webRequest.error);
-                    this.sendingPos = false;
-                    break;
-                case UnityWebRequest.Result.ProtocolError:
-                    Debug.Log("signUserTxInputs  " + signtx + " : HTTP Error: " + webRequest.error);
-                    this.sendingPos = false;
-                    break;
-                case UnityWebRequest.Result.Success:
-
-                    Debug.Log("signUserTxInputs signtxinput" + signtx + " : \nReceived: " + webRequest.downloadHandler.text);
-
-                    this.userTx.txid = JsonUtility.FromJson<RPCSign>(webRequest.downloadHandler.text).result.txid;
-
-                    Debug.Log("signUserTxInputs signtxinput" + this.userTx.txid);
-                    break;
-            }
-        }
-
-        this.userTx.issigned = true;
-
-        StartCoroutine(SubmitUserTx());
-    }
-
-    public IEnumerator SendAvatarPosMessage(WalletAddress mykey,string userName, string avatarHash, Vector3 pos, Quaternion rot)
-    {
-
-        
-        if (this.sendingPos)
-            yield break;
-
-        this.sendingPos = true;
-
-        this.mykey = mykey;
-        string URL = "http://" + this.server + "/jsonrpc";
-        string userJSon = "{name : \"" + userName + "\", avatar : \"" + avatarHash + "\", ";
-        userJSon += "pos : [ " + pos.x.ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + pos.y.ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + pos.z.ToString(System.Globalization.CultureInfo.InvariantCulture) +"] ,";
-        userJSon += "rot : [ " + rot.x.ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + rot.y.ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + rot.z.ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + rot.w.ToString(System.Globalization.CultureInfo.InvariantCulture) + "]";
-        userJSon += "  }";
-
-        string makeappuser = "{id:1 , jsonrpc: \"2.0\", method: \"makeappobjtx\", params : [\"" + appName + "\"," + userTypeId.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(this.mykey.getPub().Q.GetEncoded(true)) + "\"," + userJSon + ", [], 0, 0, 99999, 0xFFFFFFFF] }";
-        Debug.Log("makeappuser  " + URL + "  " + makeappuser);
-
-        UnityWebRequest scenewebRequest = UnityWebRequest.Put(URL, makeappuser);
-        scenewebRequest.SetRequestHeader("Content-Type", "application/json");
-        // Request and wait for the desired page.
-        yield return scenewebRequest.SendWebRequest();
-
-        switch (scenewebRequest.result)
-        {
-            case UnityWebRequest.Result.ConnectionError:
-            case UnityWebRequest.Result.DataProcessingError:
-                Debug.Log("makeappuser  " + makeappuser + " : Error: " + scenewebRequest.error);
-                this.sendingPos = false;
-                break;
-            case UnityWebRequest.Result.ProtocolError:
-                Debug.Log("makeappuser  " + makeappuser + " : HTTP Error: " + scenewebRequest.error);
-                this.sendingPos = false;
-                break;
-            case UnityWebRequest.Result.Success:
-
-                Debug.Log("makeappuser " + makeappuser + " : \nReceived: " + scenewebRequest.downloadHandler.text);
-                this.userTx = JsonUtility.FromJson<RPCTransaction>(scenewebRequest.downloadHandler.text).result.transaction;
-                Debug.Log("makeappuser myTransaction" + this.userTx.txid + " " + this.userTx.txsin.Count);
-                this.userTx.issigned = false;
-                StartCoroutine(signUserTxInputs());
-
-                break;
-        }
-    }
-    */
 
     public void saveAllScenes(WalletAddress mainKey)
     {

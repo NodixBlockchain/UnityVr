@@ -78,6 +78,12 @@ public class Room
     public RoomScene[] objects;
     public RoomWall[] walls;
     public string objHash;
+
+    public int nObjLoaded=0;
+    public int nWallsLoaded = 0;
+    public int curLoadWall = 0;
+
+
 }
 
 [System.Serializable]
@@ -1533,7 +1539,7 @@ public class loadGallery : MonoBehaviour
             rh[n] = Me.avatar[31 - n];
         }
         */
-        string URL = "http://" + room.server + baseURL + "/obj/" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(Me.avatar);
+        string URL = "http://" + room.server + baseURL + "/obj/" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(Me.avatar).ToUpper();
 
         Debug.Log("loading avatar " + URL);
 
@@ -1785,7 +1791,7 @@ public class loadGallery : MonoBehaviour
         Cam.transform.rotation = Quaternion.Euler(currentRotation.y, currentRotation.x, 0);
 
 
-        if (!room.hasHMD())
+        if (!vrRoom.hasHMD())
         {
             Vector3 dir = Cam.transform.rotation * Vector3.forward;
             dir.y = 0.0f;
@@ -1835,13 +1841,6 @@ public class loadGallery : MonoBehaviour
                 Me.rot = Quaternion.Euler(0.0f, Cam.transform.rotation.eulerAngles.y + 180.0f, 0.0f);
             }
         }
-
-        
-
-
-
-     
-
 
         if ((room.roomHash!= null) &&(room.isLoaded()))
         {
