@@ -48,6 +48,9 @@
         {
             //return JsonUtility.FromJson<StorageInfo>(str);
 
+            if ((str == null) || (str.Length < 1))
+                return null;
+
             XmlSerializer serializer = new XmlSerializer(typeof(StorageInfo));
             MemoryStream reader = new MemoryStream(Encoding.UTF8.GetBytes(str));
             return (StorageInfo)serializer.Deserialize(reader);

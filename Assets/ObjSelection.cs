@@ -9,7 +9,7 @@ using Org.BouncyCastle.Crypto.Parameters;
 public class ObjSelection : MonoBehaviour
 {
     public GameObject SelectRoomObject = null;
-    public ECDomainParameters domainParams;
+    
     public int MoveObj = 0;
     public float MoveSpeed = 10.0f;
     public float RotSpeed = 1000.0f;
@@ -28,7 +28,7 @@ public class ObjSelection : MonoBehaviour
         if(hpk != null)
         {
             byte[] pubKey = Org.BouncyCastle.Utilities.Encoders.Hex.Decode(hpk);
-            WalletAddress addr = new WalletAddress("my", pubKey, domainParams);
+            WalletAddress addr = new WalletAddress("my", pubKey, Wallet.domainParams);
             panel.transform.Find("ObjAddr").GetComponent<Text>().text = addr.PubAddr;
         }
         MoveObj = 0;

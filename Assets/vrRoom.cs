@@ -334,12 +334,12 @@ public class vrRoom : MonoBehaviour
 
     public List<roomUser> users;
 
-    private ECDomainParameters domainParams;
+    
 
 
     private Transaction roomTx;
     private Transaction userTx;
-    private WalletAddress mykey;
+    
 
     private Grid grid;
 
@@ -405,12 +405,6 @@ public class vrRoom : MonoBehaviour
         return EditRoomWall;
     }
 
-    public void setECDomain(ECDomainParameters domainParams,string myaddr)
-    {
-        this.domainParams = domainParams;
-        this.myaddr = myaddr;
-
-    }
 
     public void loadUserAvatar(roomUser user)
     {
@@ -542,10 +536,12 @@ public class vrRoom : MonoBehaviour
 
             Debug.Log("new user " + user.name + " av : " + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(user.avatar) + " key : " + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(user.pkey) + " " + user.pos.ToString() + " " + user.rot.eulerAngles.ToString());
 
-            user.addr = WalletAddress.pub2addr(new ECPublicKeyParameters(domainParams.Curve.DecodePoint(user.pkey), domainParams));
+            user.addr = Wallet.pub2addr(new ECPublicKeyParameters(Wallet.domainParams.Curve.DecodePoint(user.pkey), Wallet.domainParams));
 
-            if (user.addr != myaddr)
+            if (user.addr != Wallet.mainKey.PubAddr)
                 newUser(user);
+
+            
 
             return true;
         }
@@ -903,7 +899,7 @@ public class vrRoom : MonoBehaviour
             ObjPannel = Instantiate(Resources.Load("ObjCanvas")) as GameObject;
 
         ObjPannel.GetComponent<ObjSelection>().SelectRoomObject = hoverRoomObject;
-        ObjPannel.GetComponent<ObjSelection>().domainParams = domainParams;
+        
 
         GameObject.Find("CloseObjPanel").GetComponent<Button>().onClick.AddListener(closeObjPanel);
 
@@ -1813,8 +1809,8 @@ public class vrRoom : MonoBehaviour
 
         for (int n = 0; n < tx.txsin.Count; n++)
         {
-            byte[] derSign = this.mykey.Sign(Org.BouncyCastle.Utilities.Encoders.Hex.Decode(tx.txsin[n].signHash), this.domainParams);
-            string signtx = "{id:1 , jsonrpc: \"2.0\", method: \"signtxinput\", params : [\"" + tx.txid + "\"," + n.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(derSign) + "\",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(this.mykey.getPub().Q.GetEncoded(true)) + "\"]}";
+            byte[] derSign = Wallet.mainKey.Sign(Org.BouncyCastle.Utilities.Encoders.Hex.Decode(tx.txsin[n].signHash), Wallet.domainParams);
+            string signtx = "{id:1 , jsonrpc: \"2.0\", method: \"signtxinput\", params : [\"" + tx.txid + "\"," + n.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(derSign) + "\",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(Wallet.mainKey.getPub().Q.GetEncoded(true)) + "\"]}";
             UnityWebRequest webRequest = UnityWebRequest.Put(URL, signtx);
             webRequest.SetRequestHeader("Content-Type", "application/json");
             // Request and wait for the desired page.
@@ -1915,8 +1911,8 @@ public class vrRoom : MonoBehaviour
         {
             for (int n = 0; n < gltfref.objs[on].nodeTx.txsin.Count; n++)
             {
-                byte[] derSign = this.mykey.Sign(Org.BouncyCastle.Utilities.Encoders.Hex.Decode(gltfref.objs[on].nodeTx.txsin[n].signHash), this.domainParams);
-                string signtx = "{id:1 , jsonrpc: \"2.0\", method: \"signtxinput\", params : [\"" + gltfref.objs[on].nodeTx.txid + "\"," + n.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(derSign) + "\",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(this.mykey.getPub().Q.GetEncoded(true)) + "\"]}";
+                byte[] derSign = Wallet.mainKey.Sign(Org.BouncyCastle.Utilities.Encoders.Hex.Decode(gltfref.objs[on].nodeTx.txsin[n].signHash), Wallet.domainParams);
+                string signtx = "{id:1 , jsonrpc: \"2.0\", method: \"signtxinput\", params : [\"" + gltfref.objs[on].nodeTx.txid + "\"," + n.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(derSign) + "\",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(Wallet.mainKey.getPub().Q.GetEncoded(true)) + "\"]}";
                 UnityWebRequest webRequest = UnityWebRequest.Put(URL, signtx);
                 webRequest.SetRequestHeader("Content-Type", "application/json");
                 // Request and wait for the desired page.
@@ -1964,7 +1960,7 @@ public class vrRoom : MonoBehaviour
             nodeJson += "scale: [" + Scale.x.ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + Scale.y.ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + Scale.z.ToString(System.Globalization.CultureInfo.InvariantCulture) + "], ";
             nodeJson += "rotation: [" + myQ.X.ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + myQ.Y.ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + myQ.Z.ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + myQ.W.ToString(System.Globalization.CultureInfo.InvariantCulture) + "]}";
 
-            string makenodeobj = "{id:1 , jsonrpc: \"2.0\", method:\"makeappobjtx\", params : [\"" + this.appName + "\"," + this.nodeTypeId.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(this.mykey.getPub().Q.GetEncoded(true)) + "\"," + nodeJson + "]}";
+            string makenodeobj = "{id:1 , jsonrpc: \"2.0\", method:\"makeappobjtx\", params : [\"" + this.appName + "\"," + this.nodeTypeId.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(Wallet.mainKey.getPub().Q.GetEncoded(true)) + "\"," + nodeJson + "]}";
 
             UnityWebRequest webRequest = UnityWebRequest.Put(URL, makenodeobj);
             webRequest.SetRequestHeader("Content-Type", "application/json");
@@ -2070,8 +2066,8 @@ public class vrRoom : MonoBehaviour
 
         for (int n = 0; n < gltfref.sceneTx.txsin.Count; n++)
         {
-            byte[] derSign = this.mykey.Sign(Org.BouncyCastle.Utilities.Encoders.Hex.Decode(gltfref.sceneTx.txsin[n].signHash), this.domainParams);
-            string signtx = "{id:1 , jsonrpc: \"2.0\", method: \"signtxinput\", params : [\"" + gltfref.sceneTx.txid + "\"," + n.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(derSign) + "\",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(this.mykey.getPub().Q.GetEncoded(true)) + "\"]}";
+            byte[] derSign = Wallet.mainKey.Sign(Org.BouncyCastle.Utilities.Encoders.Hex.Decode(gltfref.sceneTx.txsin[n].signHash), Wallet.domainParams);
+            string signtx = "{id:1 , jsonrpc: \"2.0\", method: \"signtxinput\", params : [\"" + gltfref.sceneTx.txid + "\"," + n.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(derSign) + "\",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(Wallet.mainKey.getPub().Q.GetEncoded(true)) + "\"]}";
             UnityWebRequest webRequest = UnityWebRequest.Put(URL, signtx);
             webRequest.SetRequestHeader("Content-Type", "application/json");
             // Request and wait for the desired page.
@@ -2164,8 +2160,8 @@ public class vrRoom : MonoBehaviour
 
         for (int n = 0; n < seg.wallTx.txsin.Count; n++)
         {
-            byte[] derSign = this.mykey.Sign(Org.BouncyCastle.Utilities.Encoders.Hex.Decode(seg.wallTx.txsin[n].signHash), this.domainParams);
-            string signtx = "{id:1 , jsonrpc: \"2.0\", method: \"signtxinput\", params : [\"" + seg.wallTx.txid + "\"," + n.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(derSign) + "\",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(this.mykey.getPub().Q.GetEncoded(true)) + "\"]}";
+            byte[] derSign = Wallet.mainKey.Sign(Org.BouncyCastle.Utilities.Encoders.Hex.Decode(seg.wallTx.txsin[n].signHash), Wallet.domainParams);
+            string signtx = "{id:1 , jsonrpc: \"2.0\", method: \"signtxinput\", params : [\"" + seg.wallTx.txid + "\"," + n.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(derSign) + "\",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(Wallet.mainKey.getPub().Q.GetEncoded(true)) + "\"]}";
             UnityWebRequest webRequest = UnityWebRequest.Put(URL, signtx);
             webRequest.SetRequestHeader("Content-Type", "application/json");
             // Request and wait for the desired page.
@@ -2199,7 +2195,7 @@ public class vrRoom : MonoBehaviour
         {
             string URL = "http://" + this.server + "/jsonrpc";
             string wallJSon = "{start : [" + this.wallSegments[n].start.x.ToString() + "," + this.wallSegments[n].start.y.ToString() + "], objHash : \"" + this.wallSegments[n].gltfObjs.rootHash + "\" }";
-            string makeappwall = "{id:1 , jsonrpc: \"2.0\", method: \"makeappobjtx\", params : [\"" + appName + "\"," + wallTypeId.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(this.mykey.getPub().Q.GetEncoded(true)) + "\"," + wallJSon + "]}";
+            string makeappwall = "{id:1 , jsonrpc: \"2.0\", method: \"makeappobjtx\", params : [\"" + appName + "\"," + wallTypeId.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(Wallet.mainKey.getPub().Q.GetEncoded(true)) + "\"," + wallJSon + "]}";
 
             Debug.Log("makewall  " + URL + "  " + makeappwall);
 
@@ -2237,7 +2233,7 @@ public class vrRoom : MonoBehaviour
         {
             gltfRef gltfref = this.sceneObjects[n];
             string sceneJSon = "{root : \"" + gltfref.rootHash + "\"}";
-            string makeappobj = "{id:1 , jsonrpc: \"2.0\", method: \"makeappobjtx\", params : [\"" + appName + "\"," + sceneTypeId.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(this.mykey.getPub().Q.GetEncoded(true)) + "\"," + sceneJSon + "]}";
+            string makeappobj = "{id:1 , jsonrpc: \"2.0\", method: \"makeappobjtx\", params : [\"" + appName + "\"," + sceneTypeId.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(Wallet.mainKey.getPub().Q.GetEncoded(true)) + "\"," + sceneJSon + "]}";
             Debug.Log("makeobj  " + URL + "  " + makeappobj);
 
             UnityWebRequest scenewebRequest = UnityWebRequest.Put(URL, makeappobj);
@@ -2300,8 +2296,8 @@ public class vrRoom : MonoBehaviour
 
         for (int n = 0; n < this.roomTx.txsin.Count; n++)
         {
-            byte[] derSign = this.mykey.Sign(Org.BouncyCastle.Utilities.Encoders.Hex.Decode(this.roomTx.txsin[n].signHash), this.domainParams);
-            string signtx = "{id:1 , jsonrpc: \"2.0\", method: \"signtxinput\", params : [\"" + this.roomTx.txid + "\"," + n.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(derSign) + "\",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(mykey.getPub().Q.GetEncoded(true)) + "\"]}";
+            byte[] derSign = Wallet.mainKey.Sign(Org.BouncyCastle.Utilities.Encoders.Hex.Decode(this.roomTx.txsin[n].signHash), Wallet.domainParams);
+            string signtx = "{id:1 , jsonrpc: \"2.0\", method: \"signtxinput\", params : [\"" + this.roomTx.txid + "\"," + n.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(derSign) + "\",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(Wallet.mainKey.getPub().Q.GetEncoded(true)) + "\"]}";
             UnityWebRequest webRequest = UnityWebRequest.Put(URL, signtx);
             webRequest.SetRequestHeader("Content-Type", "application/json");
             // Request and wait for the desired page.
@@ -2339,7 +2335,7 @@ public class vrRoom : MonoBehaviour
     {
         string URL = "http://" + this.server + "/jsonrpc";
         string roomJSon = "{name : \"" + this.roomName + "\", wallHeight : " + wallHeight + "  }";
-        string makeapproom = "{id:1 , jsonrpc: \"2.0\", method: \"makeappobjtx\", params : [\"" + appName + "\"," + roomTypeId.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(this.mykey.getPub().Q.GetEncoded(true)) + "\"," + roomJSon + "]}";
+        string makeapproom = "{id:1 , jsonrpc: \"2.0\", method: \"makeappobjtx\", params : [\"" + appName + "\"," + roomTypeId.ToString() + ",\"" + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(Wallet.mainKey.getPub().Q.GetEncoded(true)) + "\"," + roomJSon + "]}";
         Debug.Log("makeapproom  " + URL + "  " + makeapproom);
 
         UnityWebRequest scenewebRequest = UnityWebRequest.Put(URL, makeapproom);
@@ -2368,10 +2364,9 @@ public class vrRoom : MonoBehaviour
         }
     }
 
-    public void saveAllScenes(WalletAddress mainKey)
+    public void saveAllScenes()
     {
         Debug.Log("save scenes " + this.sceneObjects.Count);
-        this.mykey = mainKey;
         StartCoroutine(this.makeroom());
     }
 

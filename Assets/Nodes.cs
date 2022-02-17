@@ -12,7 +12,7 @@ using System.Numerics;
 
 using Org.BouncyCastle.Crypto.Digests;
 using Org.BouncyCastle.Crypto.Parameters;
-
+using Org.BouncyCastle.Math.EC;
 
 using DataTanker;
 using DataTanker.Settings;
@@ -79,6 +79,14 @@ public struct messageGetHeaders
     public byte[] hashStop;
 }
 
+public struct utxo
+{
+    public string addr;
+    public ulong amount;
+    public byte[] objh;
+}
+
+
 public struct blockheader
 {
     public uint version;
@@ -89,6 +97,7 @@ public struct blockheader
     public uint nonce;
     public uint nTx;
     public bool isPow;
+    public uint height;
 }
 
 
@@ -121,10 +130,17 @@ public struct Tx
     public TransactionInput[] inputs;
     public TransactionOutput[] outputs;
     public uint locktime;
+    public long size;
 }
 
 
-
+public struct BTx
+{
+    public Tx tx;
+    public byte[] blk;
+    public uint pos;
+    public List<byte[]> branches;
+}
 public struct messageInventoryHash
 {
     public uint type;
@@ -259,8 +275,12 @@ public class Node
 
     public List<blockheader> RecvHeaders;
     public List<Tx> RecvTransactions;
+    public List<BTx> RecvBTransactions;
+
+
     public object _blkLock = new object();
     public object _txLock = new object();
+    public object _btxLock = new object();
     public object _invLock = new object();
 
     private messageVersion ver;
@@ -287,6 +307,7 @@ public class Node
         this.ver = new messageVersion();
         this.RecvHeaders = new List<blockheader>();
         this.RecvTransactions = new List<Tx>();
+        this.RecvBTransactions = new List<BTx>();
         this.inventory = new List<messageInventoryHash>();
 
 
@@ -482,9 +503,11 @@ public class Node
     private void ConnectionError()
     {
         connected = false;
-        client.Close();
-        client = null;
-
+        if(client != null)
+        {
+            client.Close();
+            client = null;
+        }
     }
     public void SendGetDataMessage(messageInventoryHash[] hashList)
     {
@@ -493,11 +516,22 @@ public class Node
             MemoryStream m = new MemoryStream();
             BinaryWriter writer = new BinaryWriter(m);
 
-            Nodes.writeVINT((ulong)hashList.Length, writer);
+            ulong cnt = 0;
+
             for (int n = 0; n < hashList.Length; n++)
             {
-                writer.Write(hashList[n].type);
-                writer.Write(hashList[n].hash);
+                if ((hashList[n].type != 0) && (hashList[n].hash != null))
+                    cnt++;
+            }
+
+            Nodes.writeVINT(cnt, writer);
+            for (int n = 0; n < hashList.Length; n++)
+            {
+                if ((hashList[n].type != 0) && (hashList[n].hash != null))
+                {
+                    writer.Write(hashList[n].type);
+                    writer.Write(hashList[n].hash);
+                }
             }
 
             byte[] messageBuffer = createMessageBuffer("getdata", m);
@@ -569,6 +603,33 @@ public class Node
         {
             Debug.Log(e.ToString()); 
 		    ConnectionError();
+        }
+    }
+
+    public void SendAddressFilter()
+    {
+        try
+        {
+            MemoryStream m = new MemoryStream();
+            BinaryWriter writer = new BinaryWriter(m);
+
+            Nodes.writeVINT((ulong)Wallet.addresses.Count, writer);
+
+            for(int n=0;n< Wallet.addresses.Count;n++)
+            {
+                byte[] addrB = Wallet.base58ToByteArray(Wallet.addresses[n].PubAddr);
+                string a=Wallet.base58FromByteArray(addrB);
+
+                writer.Write(addrB);
+            }
+
+            byte[] messageBuffer = createMessageBuffer("afilter", m);
+            client.BeginSend(messageBuffer, 0, (int)(24 + m.Position), 0, new AsyncCallback(SendCallback), client);
+        }
+        catch (Exception e)
+        {
+            Debug.Log(e.ToString());
+            ConnectionError();
         }
     }
 
@@ -997,6 +1058,74 @@ public class Node
 		    ConnectionError();
         }
     }
+    private void ReceiveBTxCallBack(IAsyncResult ar)
+    {
+
+        try
+        {
+
+
+            // Retrieve the state object and the client socket
+            MessageState msg = (MessageState)ar.AsyncState;
+            int bytesRead = client.EndReceive(ar);
+            if (bytesRead <= 0)
+            {
+                Debug.Log("ReceiveHeadersCallBack error ");
+                ConnectionError();
+                return;
+            }
+
+            msg.writer.Write(msg.buffer, 0, bytesRead);
+
+            if (msg.m.Position >= msg.hdr.size)
+            {
+                var reader = new BinaryReader(msg.m);
+                msg.m.Position = 0;
+
+                BTx btx = new BTx();
+
+                btx.tx = Nodes.BytestoTX(msg.m.GetBuffer());
+                btx.tx.hash = Nodes.Hash(Nodes.Hash(Nodes.TXtoBytes(btx.tx)));
+
+                msg.m.Position = btx.tx.size;
+
+                btx.blk = reader.ReadBytes(32);
+                btx.pos = reader.ReadUInt32();
+                long nbr = Nodes.readVINT(reader);
+                btx.branches = new List<byte[]>();
+
+                for (int n = 0; n < nbr; n++)
+                {
+                    byte[] branch = reader.ReadBytes(32);
+                    btx.branches.Add(branch);
+                }
+
+                lock (_btxLock)
+                {
+                    RecvBTransactions.Add(btx);
+                }
+                ReceivePacketHDR();
+
+                /*Debug.Log("get tx message " + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(transaction.hash));*/
+            }
+            else
+                client.BeginReceive(msg.buffer, 0, (int)(msg.hdr.size - msg.m.Position), 0, new AsyncCallback(ReceiveTxCallBack), msg);
+        }
+        catch (Exception e)
+        {
+            Debug.Log(e.ToString());
+            ConnectionError();
+        }
+    }
+
+
+    private void ReceiveBTx(messageHDR hdr)
+    {
+        // Create the state object.  
+        MessageState msg = new MessageState(hdr);
+        // Begin receiving the data from the remote device.  
+        client.BeginReceive(msg.buffer, 0, msg.BufferSize, 0, new AsyncCallback(ReceiveBTxCallBack), msg);
+    }
 
     private void ReceiveTx(messageHDR hdr)
     {
@@ -1290,19 +1419,20 @@ public class Node
                     case "version": ReceiveVersion(hdr); SendVerackMessage(); break;
                     case "mempool": ReceivePacketHDR(); break;
                     case "getaddr": ReceivePacketHDR(); break;
-                    case "verack": ReceivePacketHDR(); SendPingMessage(); break;
+                    case "verack": ReceivePacketHDR(); SendPingMessage(); SendAddressFilter(); break;
                     case "ping": ReceivePing(hdr); break;
                     case "pong": ReceivePong(hdr); break;
                     case "headers": ReceiveHeaders(hdr); break;
                     case "inv": ReceiveInventory(hdr); break;
                     case "tx": ReceiveTx(hdr); break;
-                    case "addr": ReceiveTx(hdr); break;
+                    case "btx": ReceiveBTx(hdr); break;
+                    case "addr": ReceiveAddr(hdr); break;
                     default: 
                         Debug.Log("unknown message : " + hdr.cmd);
 
                         MessageState unk = new MessageState(hdr);
 
-                        client.BeginReceive(unk.buffer, 0, (int)unk.hdr.size, 0, new AsyncCallback(ReceiveVersionCallback), unk);
+                        client.BeginReceive(unk.buffer, 0, (int)unk.hdr.size, 0, new AsyncCallback(ReceiveUnknownCallback), unk);
 
                         ReceivePacketHDR(); 
                     break;
@@ -1324,7 +1454,9 @@ public class appObj
     public uint type;
     public byte[] objData;
     public byte[] pubkey;
+    public string addr;
     public byte[] txh;
+    public uint RecvTime;
 
 }
 
@@ -1355,6 +1487,9 @@ public class Nodes : MonoBehaviour
 
     IBPlusTreeKeyValueStorage<ComparableKeyOf<BigInteger>, ValueOf<blockheader>> blkstorage;
     IBPlusTreeKeyValueStorage<ComparableKeyOf<BigInteger>, ValueOf<Tx>> txstorage;
+    IBPlusTreeKeyValueStorage<ComparableKeyOf<BigInteger>, ValueOf<utxo>> utxostorage;
+
+    
     IBPlusTreeKeyValueStorage<ComparableKeyOf<uint>, ValueOf<byte[]>> blksIdxtorage;
 
     public static byte[] Hash(byte[] data)
@@ -1795,6 +1930,43 @@ public class Nodes : MonoBehaviour
         }
 
     }
+
+    public static byte[] sHDRtoBytes(blockheader hdr)
+    {
+        MemoryStream buffer = new MemoryStream();
+        BinaryWriter writer = new BinaryWriter(buffer);
+
+        writer.Write(hdr.version);
+        writer.Write(hdr.prev);
+        writer.Write(hdr.merkle_root);
+        writer.Write(hdr.time);
+        writer.Write(hdr.bits);
+        writer.Write(hdr.nonce);
+        writer.Write(hdr.height);
+
+        return buffer.ToArray();
+    }
+
+
+
+    public static blockheader sBytestoHDR(byte[] data)
+    {
+        blockheader hdr = new blockheader();
+        MemoryStream buffer = new MemoryStream(data);
+        BinaryReader reader = new BinaryReader(buffer);
+
+        hdr.version = reader.ReadUInt32();
+        hdr.prev = reader.ReadBytes(32);
+        hdr.merkle_root = reader.ReadBytes(32);
+
+        hdr.time = reader.ReadUInt32();
+        hdr.bits = reader.ReadUInt32();
+        hdr.nonce = reader.ReadUInt32();
+        hdr.height = reader.ReadUInt32();
+
+
+        return hdr;
+    }
     public static byte[] HDRtoBytes(blockheader hdr)
     {
         MemoryStream buffer = new MemoryStream();
@@ -1806,7 +1978,7 @@ public class Nodes : MonoBehaviour
         writer.Write(hdr.time);
         writer.Write(hdr.bits);
         writer.Write(hdr.nonce);
-
+        
         return buffer.ToArray();
     }
 
@@ -1825,9 +1997,44 @@ public class Nodes : MonoBehaviour
         hdr.time = reader.ReadUInt32();
         hdr.bits = reader.ReadUInt32();
         hdr.nonce = reader.ReadUInt32();
+        
 
         return hdr;
     }
+
+    public byte[] BytesFromUTXO(utxo UTXO)
+    {
+        MemoryStream buffer = new MemoryStream();
+        BinaryWriter writer = new BinaryWriter(buffer);
+
+        writer.Write(Wallet.base58ToByteArray(UTXO.addr));
+        writer.Write(UTXO.amount);
+
+        if (UTXO.objh != null)
+            writer.Write(UTXO.objh);
+
+        return buffer.ToArray();
+    }
+    public utxo UTXOFromBytes(byte[] data)
+    {
+        utxo UTXO = new utxo();
+        MemoryStream buffer = new MemoryStream(data);
+        BinaryReader reader = new BinaryReader(buffer);
+
+        byte[] addr = reader.ReadBytes(25);
+
+        UTXO.addr = Wallet.base58FromByteArray(addr);
+        UTXO.amount = reader.ReadUInt64();
+
+        if (data.Length >= 55)
+            UTXO.objh = reader.ReadBytes(32);
+        else
+            UTXO.objh = null;
+
+
+        return UTXO;
+    }
+
 
     public static Tx BytestoTX(byte[] data)
     {
@@ -1868,6 +2075,7 @@ public class Nodes : MonoBehaviour
         }
 
         tx.locktime= reader.ReadUInt32();
+        tx.size = buffer.Position;
 
         return tx;
     }
@@ -2005,13 +2213,17 @@ public class Nodes : MonoBehaviour
         if (!System.IO.Directory.Exists(Application.persistentDataPath + "/tx"))
             System.IO.Directory.CreateDirectory(Application.persistentDataPath + "/tx");
 
+        if (!System.IO.Directory.Exists(Application.persistentDataPath + "/utxo"))
+            System.IO.Directory.CreateDirectory(Application.persistentDataPath + "/utxo");
+
+
 
         var settings = BPlusTreeStorageSettings.Default(32); // use default settings with 32-byte keys
         settings.AutoFlushTimeout = TimeSpan.FromMilliseconds(50);
 
         blkstorage = new StorageFactory().CreateBPlusTreeStorage<BigInteger, blockheader>(
-                p => HDRtoBytes(p),      // value serialization
-                p => BytestoHDR(p),     // value deserialization
+                p => sHDRtoBytes(p),      // value serialization
+                p => sBytestoHDR(p),     // value deserialization
                 settings);
 
 
@@ -2036,6 +2248,19 @@ public class Nodes : MonoBehaviour
         settings3);
 
         txstorage.OpenOrCreate(Application.persistentDataPath + "/tx");
+
+
+        var settings4 = BPlusTreeStorageSettings.Default(36); // use default settings with 32-byte keys
+        settings4.AutoFlushTimeout = TimeSpan.FromMilliseconds(50);
+
+        utxostorage = new StorageFactory().CreateBPlusTreeStorage<BigInteger, utxo>(
+                p => BytesFromUTXO(p),      // value serialization
+                p => UTXOFromBytes(p),     // value deserialization
+                settings4);
+
+
+        utxostorage.OpenOrCreate(Application.persistentDataPath + "/utxo");
+
 
         if (block_height == 0)
             makeGenesisBlock();
@@ -2071,9 +2296,9 @@ public class Nodes : MonoBehaviour
     public static int compareHash(byte [] h1, byte[] h2)
     {
         if (h1.Length != 32)
-            return 0;
+            return -2;
         if (h1.Length != h2.Length)
-            return 0;
+            return -2;
 
         for(int n=0;n<32;n++)
         {
@@ -2123,44 +2348,7 @@ public class Nodes : MonoBehaviour
         return System.Text.Encoding.UTF8.GetString(b, offset, (int)len);
     }
 
-    string getScriptData(byte[] b, int offset, out int nofs)
-    {
-        int len;
-
-        if (b[offset] == 0x4C)
-        {
-            offset++;
-            len = b[offset];
-            offset++;
-        }
-        else if (b[offset] == 0x4D)
-        {
-            offset++;
-            len = (int)((b[offset + 1]) | (b[offset + 2] << 8));
-            offset += 2;
-        }
-        else if (b[offset] == 0x4E)
-        {
-            offset++;
-            len = (int)((b[offset + 1]) | (b[offset + 2] << 8) | (b[offset + 3] << 16) | (b[offset + 3] << 24));
-            offset += 5;
-        }
-        else
-        {
-            nofs = offset;
-            return null;
-        }
-
-        if ((offset + len) > b.Length)
-        {
-            nofs = offset;
-            return null;
-        }
-
-        nofs = offset + len;
-
-        return System.Text.Encoding.UTF8.GetString(b, offset, (int)len);
-    }
+    
 
 
     bool get_type_infos(byte []script, out ApplicationTypeEntry tkey)
@@ -2425,257 +2613,6 @@ public class Nodes : MonoBehaviour
         return null;
     }
 
-    bool ProcessTx(Tx tx,out TxInfos infos)
-    {
-        TxInfos txi= new TxInfos();
-
-        txi.app = null;
-        txi.obj = null;
-        txi.childOf = null;
-        txi.child = null;
-        txi.item = 0;
-
-        for (int ni = 0; ni < tx.inputs.Length; ni++)
-        {
-            if (compareHash(tx.inputs[ni].txid, Nodes.nullHash) ==0 )
-            {
-                if(tx.inputs[ni].utxo >= 0xFFFF)
-                {
-                    setAppRoot(tx);
-                }
-            }
-            else if ((apps.root!=null)&&(apps.root.hash != null)&&(compareHash(tx.inputs[ni].txid, apps.root.hash) == 0))
-            {
-                int next;
-                string appName = getScriptVar(tx.inputs[ni].script, 0, out next);
-                addApp(tx, appName);
-
-                if(appName == "UnityApp")
-                    recvApps = false;
-            }
-            else if((txi.app = isAppItem(tx.inputs[ni])) != null)
-            {
-                switch(tx.inputs[ni].utxo)
-                {
-                    case 0:
-                        txi.item = 1;
-                    break;
-                    case 1:
-                        txi.item = 2;
-                    break;
-                    case 2:
-                        txi.item = 3;
-                    break;
-                    case 3:
-                        txi.item = 4;
-                    break;
-                    case 4:
-                        txi.item = 5;
-                    break;
-                    case 5:
-                        txi.item = 6;
-                    break;
-                    default:
-                        infos = txi;
-                        return false;
-
-                }
-                /*Debug.Log("app Item " + txi.app.name +" "+ txi.item);*/
-            }
-            else if((txi.childOf = findAppObj(tx.inputs[ni].txid)) != null)
-            {
-                /*Debug.Log("new child of " + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(tx.inputs[ni].txid));*/
-            }
-        }
-
-        if (txi.app != null)
-        {
-            switch(txi.item )
-            {
-                case 1:
-                    ApplicationType newType = parseAppType(tx);
-
-                    if (txi.app.types == null)
-                    {
-                        txi.app.types = new ApplicationType[1];
-                        txi.app.types[0] = newType;
-                    }
-                    else
-                    {
-                        ApplicationType[] at = new ApplicationType[txi.app.types.Length + 1];
-
-                        for (int n = 0; n < txi.app.types.Length; n++)
-                        {
-                            at[n] = txi.app.types[n];
-                        }
-                        at[txi.app.types.Length] = newType;
-                        txi.app.types = at;
-                    }
-                    saveApps();
-                break;
-                case 2:
-                    for (int ni = 0; ni < tx.outputs.Length; ni++)
-                    {
-                        if((tx.outputs[ni].amount & 0xFFFFFFFF00000000)== 0xFFFFFFFF00000000)
-                        {
-                            uint typeid = (uint)(tx.outputs[ni].amount & 0xFFFFFFFF);
-                            byte opcode;
-                            long tlen;
-                            ApplicationType type = findAppType(txi.app, typeid);
-                            if (type == null)
-                            {
-                                infos = txi;
-                                return false;
-                            }
-                                
-
-                            MemoryStream buffer = new MemoryStream(tx.outputs[ni].script);
-                            BinaryReader reader = new BinaryReader(buffer);
-
-                            int pkLen = reader.ReadByte();
-
-                            if (pkLen != 33)
-                            {
-                                infos = txi;
-                                return false;
-                            }
-
-                            txi.obj = new appObj();
-                            txi.obj.pubkey = reader.ReadBytes(33);
-                            txi.obj.type = typeid;
-                            txi.obj.txh = tx.hash;
-                            
-
-                            //user.addr = WalletAddress.pub2addr(new ECPublicKeyParameters(domainParams.Curve.DecodePoint(user.pkey), domainParams));
-
-                            opcode = reader.ReadByte();
-                            if (opcode != 0xAC)
-                            {
-                                infos = txi;
-                                return false;
-                            }
-
-                            opcode = reader.ReadByte();
-
-                            if (opcode != 0x6A)
-                            {
-                                infos = txi;
-                                return false;
-                            }
-
-                            opcode = reader.ReadByte();
-
-
-                            if (opcode == 0x4c)
-                                tlen = (long)reader.ReadByte();
-                            else if (opcode == 0x4d)
-                                tlen = (long)reader.ReadUInt16();
-                            else if (opcode == 0x4e)
-                                tlen = (long)reader.ReadUInt32();
-                            else
-                            {
-                                infos = txi;
-                                return false;
-                            }
-
-
-                            txi.obj.objData = new byte[tlen];
-
-                            Buffer.BlockCopy(tx.outputs[ni].script, (int)buffer.Position, txi.obj.objData, 0, (int)tlen);
-
-                            appObjs.Add(txi.obj);
-
-                            /*Debug.Log("new app object " + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(tx.hash));*/
-
-                            //room.newObj(typeid, tx.outputs[ni].script);
-
-
-                        }
-                    }
-                break;
-            }
-        }
-        else if (txi.childOf != null)
-        {
-            MemoryStream buffer = new MemoryStream(tx.outputs[0].script);
-            BinaryReader reader = new BinaryReader(buffer);
-
-            int offset=0, next=0;
-
-            string key = getScriptData(tx.outputs[0].script, 0, out next);
-            offset = next ;
-
-            if (tx.outputs[0].script[offset] != 0x4C)
-            {
-                infos = txi;
-                return false;
-            }
-
-            if (tx.outputs[0].script[offset+1] != 32)
-            {
-                infos = txi;
-                return false;
-            }
-
-            offset += 2;
-
-            byte[] childHash = new byte[32];
-            Buffer.BlockCopy(tx.outputs[0].script, offset, childHash, 0, 32);
-            txi.child = findAppObj(childHash);
-
-            if(txi.child == null)
-                Debug.Log("new child not found " + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(childHash));
-
-        }
-        infos = txi;
-        return true;
-    }
-
-    public void GetTx(byte[] hash)
-    {
-        BigInteger k = new BigInteger(hash);
-        if (txstorage.Exists(k))
-        {
-            TxInfos infos;
-            Tx tx = txstorage.Get(k);
-            tx.hash = Hash(Hash(TXtoBytes(tx)));
-            ProcessTx(tx,out infos);
-            return;
-        }
-
-        byte[] rh = new byte[32];
-
-        for (int n = 0; n < 32; n++)
-        {
-            rh[n] = room.roomHash[31 - n];
-        }
-
-        messageInventoryHash[] hashList = new messageInventoryHash[1];
-        hashList[0].hash = rh;
-        hashList[0].type = 1;
-
-        NodesList[0].SendGetDataMessage(hashList);
-
-    }
-
-    bool isSync()
-    {
-        uint max = 0;
-        if (NodesList.Count == 0)
-            return false;
-
-        for (int n = 0; n < NodesList.Count; n++)
-        {
-            if (NodesList[n].getLastBlock() > max)
-                max = NodesList[n].getLastBlock();
-        }
-
-        if (block_height + 1 >= max)
-            return true;
-        else
-            return false;
-    }
-
     byte[] objScript(byte[] pubkey, byte[] obj)
     {
         MemoryStream m = new MemoryStream();
@@ -2721,6 +2658,590 @@ public class Nodes : MonoBehaviour
         return script;
     }
 
+    string getScriptData(byte[] b, int offset, out int nofs)
+    {
+        int len;
+
+        if (b[offset] == 0x4C)
+        {
+            offset++;
+            len = b[offset];
+            offset++;
+        }
+        else if (b[offset] == 0x4D)
+        {
+            offset++;
+            len = (int)((b[offset + 1]) | (b[offset + 2] << 8));
+            offset += 2;
+        }
+        else if (b[offset] == 0x4E)
+        {
+            offset++;
+            len = (int)((b[offset + 1]) | (b[offset + 2] << 8) | (b[offset + 3] << 16) | (b[offset + 3] << 24));
+            offset += 5;
+        }
+        else
+        {
+            nofs = offset;
+            return null;
+        }
+
+        if ((offset + len) > b.Length)
+        {
+            nofs = offset;
+            return null;
+        }
+
+        nofs = offset + len;
+
+        return System.Text.Encoding.UTF8.GetString(b, offset, (int)len);
+    }
+
+    bool parseGenObjScript(byte[] script, out appObj obj)
+    {
+        MemoryStream buffer = new MemoryStream(script);
+        BinaryReader reader = new BinaryReader(buffer);
+        byte opcode;
+        long tlen;
+
+        obj = new appObj();
+
+        if (script.Length < 36)
+        {
+            obj.pubkey = null;
+            return false;
+        }
+
+        int pkLen = reader.ReadByte();
+        if (pkLen != 33)
+        {
+            obj.pubkey = null;
+            return false;
+        }
+
+        obj.pubkey = reader.ReadBytes(33);
+        obj.addr = Wallet.pub2addr(new ECPublicKeyParameters(Wallet.domainParams.Curve.DecodePoint(obj.pubkey), Wallet.domainParams));
+
+        opcode = reader.ReadByte();
+        if (opcode != 0xAC)
+        {
+            obj.pubkey = null;
+            return false;
+        }
+
+        opcode = reader.ReadByte();
+        if (opcode != 0x6A)
+        {
+            obj.pubkey = null;
+            return false;
+        }
+
+        opcode = reader.ReadByte();
+        if (opcode == 0x4c)
+            tlen = (long)reader.ReadByte();
+        else if (opcode == 0x4d)
+            tlen = (long)reader.ReadUInt16();
+        else
+        {
+            obj.pubkey = null;
+            return false;
+        }
+
+        obj.objData = new byte[tlen];
+        Buffer.BlockCopy(script, (int)buffer.Position, obj.objData, 0, (int)tlen);
+        return true;
+    }
+
+    bool parseObjScript(byte[] script, out string addr, out byte[] objHash)
+    {
+        MemoryStream buffer = new MemoryStream(script);
+        BinaryReader reader = new BinaryReader(buffer);
+        byte opcode;
+        long tlen;
+
+        if (script.Length < 26)
+        {
+            addr = null;
+            objHash = null;
+            return false;
+        }
+
+        if ((script[0]==0x76) && (script[1] == 0xA9) && (script[24] == 0xAC))
+        {
+            byte[] step1 = new byte[25];
+            //keyrh_to_addr(script->str + 3, addr);
+            step1[0] = 0x19;
+
+            for (int n = 0; n < 20; n++)
+            {
+                step1[1 + n] = script[n + 3];
+            }
+
+            var digest3 = new Sha256Digest();
+            var result3 = new byte[digest3.GetDigestSize()];
+            digest3.BlockUpdate(step1, 0, 21);
+            digest3.DoFinal(result3, 0);
+
+            var digest4 = new Sha256Digest();
+            var result4 = new byte[digest4.GetDigestSize()];
+            digest4.BlockUpdate(result3, 0, result3.Length);
+            digest4.DoFinal(result4, 0);
+
+            for (int n = 0; n < 4; n++)
+            {
+                step1[21 + n] = result4[n];
+            }
+            
+            addr = Wallet.base58FromByteArray(step1);
+        }
+        else
+        {
+            byte[] pubkey;
+            if (script.Length < 36)
+            {
+                addr = null;
+                objHash = null;
+                return false;
+            }
+            int pkLen = reader.ReadByte();
+            if (pkLen != 33)
+            {
+                addr = null;
+                objHash = null;
+                return false;
+            }
+            pubkey = reader.ReadBytes(33);
+            addr = Wallet.pub2addr(new ECPublicKeyParameters(Wallet.domainParams.Curve.DecodePoint(pubkey), Wallet.domainParams));
+
+        }
+
+        opcode = reader.ReadByte();
+        if (opcode != 0xAC)
+        {
+            addr = null;
+            objHash = null;
+            return false;
+        }
+
+        opcode = reader.ReadByte();
+        if (opcode != 0x6A)
+        {
+            addr = null;
+            objHash = null;
+            return false;
+        }
+
+        opcode = reader.ReadByte();
+        if (opcode != 0x4c)
+        {
+            addr = null;
+            objHash = null;
+            return false;
+        }
+
+        tlen = (long)reader.ReadByte();
+        if (tlen != 32)
+        {
+            addr = null;
+            objHash = null;
+            return false;
+        }
+
+        objHash = new byte[32];
+        Buffer.BlockCopy(script, (int)buffer.Position, objHash, 0, (int)32);
+
+        return true;
+
+    }
+    bool parseOutScript(byte[] script,out string addr)
+    {
+
+        if ((script[0] == 33) && (script[34] == 0xAC))
+        {
+            byte [] pubkey = new byte[33];
+            Buffer.BlockCopy(script, 1, pubkey, 0, 33);
+
+            ECPoint Q = Wallet.domainParams.Curve.DecodePoint(pubkey);
+            ECPublicKeyParameters pkey = new ECPublicKeyParameters(Q, Wallet.domainParams);
+
+            addr = Wallet.pub2addr(pkey);
+
+            return true;
+        }
+        else if ((script[0] == 0x76) && (script[1] == 0xA9) && (script[24] == 0xAC))
+        {
+            byte[] step1 = new byte[25];
+            //keyrh_to_addr(script->str + 3, addr);
+            step1[0] = 0x19;
+
+            for (int n = 0; n < 20; n++)
+            {
+                step1[1 + n] = script[n + 3];
+            }
+
+            var digest3 = new Sha256Digest();
+            var result3 = new byte[digest3.GetDigestSize()];
+            digest3.BlockUpdate(step1, 0, 21);
+            digest3.DoFinal(result3, 0);
+
+            var digest4 = new Sha256Digest();
+            var result4 = new byte[digest4.GetDigestSize()];
+            digest4.BlockUpdate(result3, 0, result3.Length);
+            digest4.DoFinal(result4, 0);
+
+            for (int n = 0; n < 4; n++)
+            {
+                step1[21 + n] = result4[n];
+            }
+
+            addr = Wallet.base58FromByteArray(step1);
+            return true;
+        }
+
+        addr = null;
+        return false;
+    }
+
+    bool ProcessTx(Tx tx,out TxInfos infos)
+    {
+        TxInfos txi= new TxInfos();
+
+        txi.app = null;
+        txi.obj = null;
+        txi.childOf = null;
+        txi.child = null;
+        txi.item = 0;
+
+        for (int ni = 0; ni < tx.inputs.Length; ni++)
+        {
+            byte[] key = new byte[36];
+
+            for (int n = 0; n < 32; n++)
+            {
+                key[n] = tx.inputs[ni].txid[n];
+            }
+
+            key[32] = (byte)(tx.inputs[ni].utxo & 0xFF);
+            key[33] = (byte)((tx.inputs[ni].utxo >> 8) & 0xFF);
+            key[34] = (byte)((tx.inputs[ni].utxo >> 16) & 0xFF);
+            key[35] = (byte)((tx.inputs[ni].utxo >> 24) & 0xFF);
+
+            utxostorage.Remove(new BigInteger(key));
+
+
+            if (compareHash(tx.inputs[ni].txid, Nodes.nullHash) ==0 )
+            {
+                if(tx.inputs[ni].utxo >= 0xFFFF)
+                {
+                    setAppRoot(tx);
+                }
+            }
+            else if ((apps.root!=null)&&(apps.root.hash != null)&&(compareHash(tx.inputs[ni].txid, apps.root.hash) == 0))
+            {
+                int next;
+                string appName = getScriptVar(tx.inputs[ni].script, 0, out next);
+                addApp(tx, appName);
+
+                if(appName == "UnityApp")
+                    recvApps = false;
+            }
+            else if((txi.app = isAppItem(tx.inputs[ni])) != null)
+            {
+                switch(tx.inputs[ni].utxo)
+                {
+                    case 0:
+                        txi.item = 1;
+
+                        ApplicationType newType = parseAppType(tx);
+
+                        if (txi.app.types == null)
+                        {
+                            txi.app.types = new ApplicationType[1];
+                            txi.app.types[0] = newType;
+                        }
+                        else
+                        {
+                            ApplicationType[] at = new ApplicationType[txi.app.types.Length + 1];
+
+                            for (int n = 0; n < txi.app.types.Length; n++)
+                            {
+                                at[n] = txi.app.types[n];
+                            }
+                            at[txi.app.types.Length] = newType;
+                            txi.app.types = at;
+                        }
+                        saveApps();
+
+                    break;
+                    case 1:
+                        txi.item = 2;
+                    break;
+                    case 2:
+                        txi.item = 3;
+                    break;
+                    case 3:
+                        txi.item = 4;
+                    break;
+                    case 4:
+                        txi.item = 5;
+                    break;
+                    case 5:
+                        txi.item = 6;
+                    break;
+                    default:
+                        infos = txi;
+                        return false;
+
+                }
+                /*Debug.Log("app Item " + txi.app.name +" "+ txi.item);*/
+            }
+            else if((txi.childOf = findAppObj(tx.inputs[ni].txid)) != null)
+            {
+                /*Debug.Log("new child of " + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(tx.inputs[ni].txid));*/
+            }
+        }
+
+  
+        for (int no = 0; no < tx.outputs.Length; no++)
+        {
+            string addr;
+            byte[] key = new byte[36];
+
+            /* utxo key */
+
+            for (int n = 0; n < 32; n++)
+            {
+                key[n] = tx.hash[n];
+            }
+
+            key[32] = (byte)(no & 0xFF);
+            key[33] = (byte)((no >> 8) & 0xFF);
+            key[34] = (byte)((no >> 16) & 0xFF);
+            key[35] = (byte)((no >> 24) & 0xFF);
+
+            if ((txi.childOf != null) && (no == 0))
+            {
+                byte[] objHash;
+
+                /* genesis object transfer */
+                if (parseObjScript(tx.outputs[no].script, out addr, out objHash))
+                {
+                    if ((tx.outputs[no].amount & 0xFFFFFFFF00000000) != 0xFFFFFFFF00000000)
+                    {
+                        infos = txi;
+                        return false;
+                    }
+
+                    uint typeid = (uint)(tx.outputs[no].amount & 0xFFFFFFFF);
+                    ApplicationType type = findAppType(txi.app, typeid);
+                    if (type == null)
+                    {
+                        infos = txi;
+                        return false;
+                    }
+                    if (Wallet.hasAddress(txi.obj.addr))
+                    {
+                        utxo UTXO = new utxo();
+
+                        UTXO.addr = txi.obj.addr;
+                        UTXO.amount = tx.outputs[no].amount;
+                        UTXO.objh = new byte[32];
+
+                        for (int n = 0; n < 32; n++)
+                        {
+                            UTXO.objh[n] = tx.hash[n];
+                        }
+
+                        utxostorage.Set(new BigInteger(key), UTXO);
+                    }
+
+                    txi.child = null;
+                }
+                /* child object */
+                else
+                {
+                    MemoryStream buffer = new MemoryStream(tx.outputs[0].script);
+                    BinaryReader reader = new BinaryReader(buffer);
+
+                    int offset = 0, next = 0;
+
+                    string ckey = getScriptData(tx.outputs[no].script, 0, out next);
+                    offset = next;
+
+                    if (tx.outputs[no].script[offset] != 0x4C)
+                    {
+                        infos = txi;
+                        return false;
+                    }
+
+                    if (tx.outputs[0].script[offset + 1] != 32)
+                    {
+                        infos = txi;
+                        return false;
+                    }
+
+                    offset += 2;
+
+                    byte[] childHash = new byte[32];
+                    Buffer.BlockCopy(tx.outputs[0].script, offset, childHash, 0, 32);
+                    txi.child = findAppObj(childHash);
+
+                    if (txi.child == null)
+                        Debug.Log("new child not found " + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(childHash));
+                }
+                continue;
+            }
+
+            if ((txi.item == 1) && (no == 0))
+                continue;
+
+            if ((tx.outputs[no].amount & 0xFFFFFFFF00000000) == 0xFFFFFFFF00000000)
+            {
+                byte[] objHash;
+                uint typeid = (uint)(tx.outputs[no].amount & 0xFFFFFFFF);
+                ApplicationType type = findAppType(txi.app, typeid);
+                if (type == null)
+                {
+                    infos = txi;
+                    return false;
+                }
+
+                /* genesis object */
+                if ((txi.item == 2)&&( no ==0))
+                {
+                    if(parseGenObjScript(tx.outputs[no].script, out txi.obj))
+                    {
+                        txi.obj.RecvTime = (uint)System.DateTimeOffset.Now.ToUnixTimeSeconds();
+                        txi.obj.type = typeid;
+                        txi.obj.txh = tx.hash;
+                        appObjs.Add(txi.obj);
+
+                        if (Wallet.hasAddress(txi.obj.addr))
+                        {
+                            utxo UTXO = new utxo();
+                            UTXO.addr = txi.obj.addr;
+                            UTXO.amount = tx.outputs[no].amount;
+                            UTXO.objh = new byte[32];
+
+                            for (int n = 0; n < 32; n++)
+                            {
+                                UTXO.objh[n] = tx.hash[n];
+                            }
+                            utxostorage.Set(new BigInteger(key), UTXO);
+                        }
+
+                        /*Debug.Log("new app object " + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(tx.hash));*/
+                    }
+                }
+                /* object transfer */
+                else if (parseObjScript(tx.outputs[no].script, out addr, out objHash))
+                {
+                    if (Wallet.hasAddress(txi.obj.addr))
+                    {
+                        utxo UTXO = new utxo();
+
+                        UTXO.addr = txi.obj.addr;
+                        UTXO.amount = tx.outputs[no].amount;
+                        UTXO.objh = new byte[32];
+
+                        for (int n = 0; n < 32; n++)
+                        {
+                            UTXO.objh[n] = objHash[n];
+                        }
+                        utxostorage.Set(new BigInteger(key), UTXO);
+                    }
+                    txi.child = null;
+                }
+            }
+            else if (parseOutScript(tx.outputs[no].script, out addr))
+            {
+                if(Wallet.hasAddress(addr))
+                {
+                    utxo UTXO= new utxo();
+
+                    UTXO.addr = addr;
+                    UTXO.amount = tx.outputs[no].amount;
+                    UTXO.objh = null;
+
+                    utxostorage.Set(new BigInteger(key), UTXO);
+                }
+            }
+        }
+
+        infos = txi;
+        return true;
+    }
+
+    public ulong getBalance(string addr)
+    {
+        BigInteger ckey, nkey;
+        ulong amount=0;
+
+        while((nkey = utxostorage.NextTo(ckey)) != null)
+        {
+            if (nkey.IsZero)
+                return amount;
+
+        
+
+            utxo UTXO = utxostorage.Get(nkey);
+            if ((UTXO.amount & 0xFFFFFFFF00000000) != 0xFFFFFFFF00000000)
+            {
+                if (UTXO.addr == addr)
+                    amount += UTXO.amount;
+            }
+
+            ckey = nkey;
+        }
+
+        return amount;
+
+    }
+
+    public void GetTx(byte[] hash)
+    {
+        BigInteger k = new BigInteger(hash);
+        if (txstorage.Exists(k))
+        {
+            TxInfos infos;
+            Tx tx = txstorage.Get(k);
+            tx.hash = Hash(Hash(TXtoBytes(tx)));
+            ProcessTx(tx,out infos);
+            return;
+        }
+
+        byte[] rh = new byte[32];
+
+        for (int n = 0; n < 32; n++)
+        {
+            rh[n] = room.roomHash[31 - n];
+        }
+
+        messageInventoryHash[] hashList = new messageInventoryHash[1];
+        hashList[0].hash = rh;
+        hashList[0].type = 4;
+
+        NodesList[0].SendGetDataMessage(hashList);
+
+    }
+
+    bool isSync()
+    {
+        uint max = 0;
+        if (NodesList.Count == 0)
+            return false;
+
+        for (int n = 0; n < NodesList.Count; n++)
+        {
+            if (NodesList[n].getLastBlock() > max)
+                max = NodesList[n].getLastBlock();
+        }
+
+        if (block_height + 1 >= max)
+            return true;
+        else
+            return false;
+    }
 
 
     byte[] computeTxSignHash(Tx tx, int i, byte[] script,uint hashtype)
@@ -2848,6 +3369,49 @@ public class Nodes : MonoBehaviour
         return;
     }
 
+    bool check_branch(BTx tx, byte[] root)
+    {
+        byte[] rt2=new byte[32] {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+        Sha256Digest ctx;
+        byte[] current_branch;
+        int n;
+        uint pos;
+
+        pos = tx.pos;
+        current_branch = tx.tx.hash;
+
+        for (n = 0; n < tx.branches.Count; n++)
+        {
+            ctx = new Sha256Digest();
+            byte[] tmp = new byte[ctx.GetDigestSize()];
+
+            Sha256Digest sha256 = new Sha256Digest();
+
+            if ((pos & 1) == 1)
+            {
+                sha256.BlockUpdate(tx.branches[n], 0, 32);
+                sha256.BlockUpdate(current_branch, 0, 32);
+            }
+            else
+            {
+                sha256.BlockUpdate(current_branch, 0, 32);
+                sha256.BlockUpdate(tx.branches[n], 0, 32);
+            }
+            sha256.DoFinal(tmp, 0);
+
+            rt2 = Hash(tmp);
+
+            current_branch = rt2;
+            pos >>= 1;
+        }
+
+        if(compareHash(rt2, root) == 0)
+            return true;
+
+        return false;
+
+    }
+
 
     // Update is called once per frame
     void Update()
@@ -2966,7 +3530,9 @@ public class Nodes : MonoBehaviour
                         {
                             if (!txstorage.Exists(new BigInteger(NodesList[n].inventory[nn].hash)))
                             {
-                                hashList[cnt] = NodesList[n].inventory[nn];
+                                hashList[cnt].hash = NodesList[n].inventory[nn].hash;
+                                hashList[cnt].type = 1;
+
                                 cnt++;
                             }
                         }
@@ -2978,10 +3544,38 @@ public class Nodes : MonoBehaviour
                 NodesList[n].inventory.RemoveRange(0, NodesList[n].inventory.Count);
             }
 
+            lock (NodesList[n]._btxLock)
+            {
+                for (int nn = 0; nn < NodesList[n].RecvBTransactions.Count; nn++)
+                {
+                    BTx tx = NodesList[n].RecvBTransactions[nn];
+
+                    blockheader blk = blkstorage.Get(new BigInteger(tx.blk));
+
+                    if (check_branch(tx, blk.merkle_root))
+                    {
+                        TxInfos infos;
+                        if (ProcessTx(tx.tx, out infos))
+                        {
+                            if ((infos.childOf != null) && (infos.child != null))
+                                room.newObj(infos.childOf, infos.child);
+
+                            if (tx.tx.locktime < 0xFFFFFFFE)
+                                txstorage.Set(new BigInteger(tx.tx.hash), tx.tx);
+
+                        }
+                    }
+                    else
+                    {
+                        Debug.Log("wrong branches");
+                    }
+                }
+
+                NodesList[n].RecvBTransactions.Clear();
+             }
 
             lock (NodesList[n]._txLock)
             {
-
                 for (int nn = 0; nn < NodesList[n].RecvTransactions.Count; nn++)
                 {
                     Tx tx = NodesList[n].RecvTransactions[nn];
@@ -2994,22 +3588,20 @@ public class Nodes : MonoBehaviour
                             if ((infos.childOf != null) && (infos.child != null))
                                 room.newObj(infos.childOf, infos.child);
 
-                            if (tx.locktime != 0xFFFFFFFF)
+                            if (tx.locktime < 0xFFFFFFFE)
                                 txstorage.Set(new BigInteger(tx.hash), tx);
                         }
-
                     }
                 }
-
                 NodesList[n].RecvTransactions.RemoveRange(0, NodesList[n].RecvTransactions.Count);
-
-
             }
 
             lock (NodesList[n]._blkLock)
             {
                 if (NodesList[n].RecvHeaders.Count > 0)
                 {
+                    messageInventoryHash[] mblocks=new messageInventoryHash[NodesList[n].RecvHeaders.Count];
+
                     for (int nn = 0; nn < NodesList[n].RecvHeaders.Count; nn++)
                     {
                         if (compareHash(blksIdxtorage.Get(block_height), NodesList[n].RecvHeaders[nn].prev) == 0)
@@ -3036,15 +3628,25 @@ public class Nodes : MonoBehaviour
                                 else
                                     Debug.Log(" block fail \n" + d1 + "\n" + d2);
                             }
+                            blockheader bh = NodesList[n].RecvHeaders[nn];
+                            bh.height = block_height;
 
                             block_height++;
-                            blkstorage.Set(new BigInteger(h), NodesList[n].RecvHeaders[nn]);
+                            blkstorage.Set(new BigInteger(h), bh);
                             blksIdxtorage.Set(block_height, h);
 
+                            mblocks[nn].type = 3;
+                            mblocks[nn].hash = new byte[32];
+
+                            for (int c = 0; c < 32; c++)
+                                mblocks[nn].hash[c] = h[c];
                         }
+
                     }
 
-                    NodesList[n].RecvHeaders = new List<blockheader>();
+                    NodesList[n].RecvHeaders.Clear();
+
+                    NodesList[n].SendGetDataMessage(mblocks);
 
                     Nodes.nextGetHeaders = System.DateTimeOffset.Now.ToUnixTimeMilliseconds() + 1000;
                     recvHDR = false;
@@ -3063,5 +3665,6 @@ public class Nodes : MonoBehaviour
         blksIdxtorage.Close();
         blkstorage.Close();
         txstorage.Close();
+        utxostorage.Close();
     }
 }

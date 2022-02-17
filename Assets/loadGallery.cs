@@ -122,7 +122,7 @@ public class WalletAddress
         ECPublicKeyParameters publicParams;
         Org.BouncyCastle.Math.EC.ECPoint Q;
 
-        key = WalletAddress.base58ToByteArray(PrivKey);
+        key = Wallet.base58ToByteArray(PrivKey);
 
         privateKey = PrivateKeyFactory.CreateKey(key) as ECPrivateKeyParameters;
         Q = privateKey.Parameters.G.Multiply(privateKey.D);
@@ -142,54 +142,12 @@ public class WalletAddress
         return stream.ToArray();
     }
 
-    public static string pub2addr(ECPublicKeyParameters key)
-    {
-        byte[] step1=new byte[25];
-        ECPoint PubPoint = key.Q;
-
-        byte[] total = PubPoint.GetEncoded(true);
-
-        var digest1 = new Sha256Digest();
-        byte[] result1 = new byte[digest1.GetDigestSize()];
-        digest1.BlockUpdate(total, 0, total.Length);
-        digest1.DoFinal(result1, 0);
-
-        var digest2 = new RipeMD160Digest();
-        var result2 = new byte[digest2.GetDigestSize()];
-        digest2.BlockUpdate(result1, 0, result1.Length);
-        digest2.DoFinal(result2, 0);
-
-        step1[0] = 0x19;
-
-        for(int n=0; n<20; n++)
-        {
-            step1[1 + n] = result2[n];
-        }
-
-        var digest3 = new Sha256Digest();
-        var result3 = new byte[digest3.GetDigestSize()];
-        digest3.BlockUpdate(step1, 0, 21);
-        digest3.DoFinal(result3, 0);
-
-        var digest4 = new Sha256Digest();
-        var result4 = new byte[digest4.GetDigestSize()];
-        digest4.BlockUpdate(result3, 0, result3.Length);
-        digest4.DoFinal(result4, 0);
-
-        for (int n = 0; n < 4; n++)
-        {
-            step1[21 + n] = result4[n];
-        }
-
-        return base58FromByteArray(step1);
-    }
-     
 
     public IEnumerator checkpub()
     {
         ECPublicKeyParameters publicParams = getPub();
         byte[] pk = publicParams.Q.GetEncoded(true);
-        string addr = pub2addr(publicParams);
+        string addr = Wallet.pub2addr(publicParams);
         Debug.Log("check public key len" + pk.Length);
 
         string xkey = Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(pk);
@@ -221,10 +179,10 @@ public class WalletAddress
         AsymmetricCipherKeyPair keyPair = generator.GenerateKeyPair();
 
         Name = name;
-        PubAddr = pub2addr((ECPublicKeyParameters)keyPair.Public);
+        PubAddr = Wallet.pub2addr((ECPublicKeyParameters)keyPair.Public);
 
         byte[] enc = Org.BouncyCastle.Pkcs.PrivateKeyInfoFactory.CreatePrivateKeyInfo(keyPair.Private).GetDerEncoded();
-        PrivKey = base58FromByteArray(enc);
+        PrivKey = Wallet.base58FromByteArray(enc);
     }
 
     public WalletAddress(string name, ECPrivateKeyParameters privAddr)
@@ -232,8 +190,8 @@ public class WalletAddress
         byte[] enc = Org.BouncyCastle.Pkcs.PrivateKeyInfoFactory.CreatePrivateKeyInfo(privAddr).GetDerEncoded();
 
         Name = name;
-        PrivKey = base58FromByteArray(enc);
-        PubAddr = pub2addr(getPub());
+        PrivKey = Wallet.base58FromByteArray(enc);
+        PubAddr = Wallet.pub2addr(getPub());
 
         Debug.Log("new WalletAddress " + PubAddr + "\nPrivate :\n"+PrivKey);
     }
@@ -244,7 +202,7 @@ public class WalletAddress
         ECPublicKeyParameters pkey = new ECPublicKeyParameters(Q, dom);
 
         Name = name;
-        PubAddr = pub2addr(pkey);
+        PubAddr = Wallet.pub2addr(pkey);
         PrivKey = null;
     }
 
@@ -259,6 +217,51 @@ public class WalletAddress
     /// <summary>
     /// Converts a base-58 string to a byte array, returning null if it wasn't valid.
     /// </summary>
+    
+
+    public ECPublicKeyParameters getPub()
+    {
+        byte[] key;
+        ECPrivateKeyParameters privateKey;
+        ECPublicKeyParameters publicParams;
+        Org.BouncyCastle.Math.EC.ECPoint Q;
+
+        key = Wallet.base58ToByteArray(PrivKey);
+
+        privateKey = PrivateKeyFactory.CreateKey(key) as ECPrivateKeyParameters;
+
+        if (privateKey == null)
+        {
+            Debug.Log("unable to decode private key " + PrivKey);
+            return null;
+        }
+
+        Q = privateKey.Parameters.G.Multiply(privateKey.D);
+        publicParams = new ECPublicKeyParameters(privateKey.AlgorithmName, Q, SecObjectIdentifiers.SecP256k1);
+
+
+        
+        return publicParams;
+    }
+
+    
+
+
+    public string Name;
+    public string PubAddr;
+    public string PrivKey;
+}
+
+[System.Serializable]
+public static class Wallet
+{
+    private static ECKeyPairGenerator generator;
+    public static ECDomainParameters domainParams;
+    public static WalletAddress mainKey;
+    public static List<WalletAddress> addresses;
+
+    public const float ONE_COIN = 100000000.0f;
+
     public static byte[] base58ToByteArray(string base58)
     {
         Org.BouncyCastle.Math.BigInteger bi2 = new Org.BouncyCastle.Math.BigInteger("0");
@@ -291,29 +294,46 @@ public class WalletAddress
         return bb;
     }
 
-    public ECPublicKeyParameters getPub()
+    public static string pub2addr(ECPublicKeyParameters key)
     {
-        byte[] key;
-        ECPrivateKeyParameters privateKey;
-        ECPublicKeyParameters publicParams;
-        Org.BouncyCastle.Math.EC.ECPoint Q;
+        byte[] step1 = new byte[25];
+        ECPoint PubPoint = key.Q;
 
-        key = WalletAddress.base58ToByteArray(PrivKey);
+        byte[] total = PubPoint.GetEncoded(true);
 
-        privateKey = PrivateKeyFactory.CreateKey(key) as ECPrivateKeyParameters;
+        var digest1 = new Sha256Digest();
+        byte[] result1 = new byte[digest1.GetDigestSize()];
+        digest1.BlockUpdate(total, 0, total.Length);
+        digest1.DoFinal(result1, 0);
 
-        if (privateKey == null)
+        var digest2 = new RipeMD160Digest();
+        var result2 = new byte[digest2.GetDigestSize()];
+        digest2.BlockUpdate(result1, 0, result1.Length);
+        digest2.DoFinal(result2, 0);
+
+        step1[0] = 0x19;
+
+        for (int n = 0; n < 20; n++)
         {
-            Debug.Log("unable to decode private key " + PrivKey);
-            return null;
+            step1[1 + n] = result2[n];
         }
 
-        Q = privateKey.Parameters.G.Multiply(privateKey.D);
-        publicParams = new ECPublicKeyParameters(privateKey.AlgorithmName, Q, SecObjectIdentifiers.SecP256k1);
+        var digest3 = new Sha256Digest();
+        var result3 = new byte[digest3.GetDigestSize()];
+        digest3.BlockUpdate(step1, 0, 21);
+        digest3.DoFinal(result3, 0);
 
+        var digest4 = new Sha256Digest();
+        var result4 = new byte[digest4.GetDigestSize()];
+        digest4.BlockUpdate(result3, 0, result3.Length);
+        digest4.DoFinal(result4, 0);
 
-        
-        return publicParams;
+        for (int n = 0; n < 4; n++)
+        {
+            step1[21 + n] = result4[n];
+        }
+
+        return Wallet.base58FromByteArray(step1);
     }
 
     public static string base58FromByteArray(byte[] ba)
@@ -343,23 +363,7 @@ public class WalletAddress
         }
         return rv;
     }
-
-
-    public string Name;
-    public string PubAddr;
-    public string PrivKey;
-}
-
-[System.Serializable]
-public class Wallet
-{
-    private ECKeyPairGenerator generator;
-    public ECDomainParameters domainParams;
-    public WalletAddress mainKey;
-
-    //MonoBehaviour mono;
-
-    public IEnumerator getnodepriv(string name, string pubaddr)
+    public static IEnumerator getnodepriv(string name, string pubaddr, string skey)
     {
 
         string URL = "http://127.0.0.1/jsonrpc/getprivaddr/" + name + "/" + pubaddr;
@@ -388,7 +392,7 @@ public class Wallet
                 byte[] mkey = new byte[32];
 
                 var rc4 = new Org.BouncyCastle.Crypto.Engines.RC4Engine();
-                KeyParameter keyParam = new KeyParameter(Encoding.ASCII.GetBytes("1618Iadix"));
+                KeyParameter keyParam = new KeyParameter(Encoding.ASCII.GetBytes(skey));
                 rc4.Init(false, keyParam);
                 rc4.ProcessBytes(key, 0, 32, mkey, 0);
 
@@ -406,7 +410,7 @@ public class Wallet
         }
     }
 
-    public Wallet()
+    public static void Init()
     {
         addresses = new List<WalletAddress> ();
 
@@ -422,7 +426,7 @@ public class Wallet
         generator.Init(keyParams);
     }
 
-    public void save()
+    public static void save()
     {
         string basePath = Application.persistentDataPath + "/Wallet";
 
@@ -436,7 +440,19 @@ public class Wallet
 
     }
 
-    public void load()
+    public static bool hasAddress(string addr)
+    {
+        for(int n=0;n<addresses.Count;n++)
+        {
+            if (addresses[n].PubAddr == addr)
+                return true;
+
+        }
+
+        return false;
+    }
+
+    public static void load()
     {
         string basePath = Application.persistentDataPath + "/Wallet";
      
@@ -477,7 +493,7 @@ public class Wallet
         save();
     }
 
-    public List<WalletAddress> addresses;
+    
 }
 
 public class NodeTableRow
@@ -578,7 +594,7 @@ public class loadGallery : MonoBehaviour
     private GameObject emptyResult;
     private GameObject roomMenu = null;
     private GameObject NodesAdd = null;
-    private Wallet wallet;
+    //private Wallet wallet;
     private GameObject newAddr;
 
     private GameObject buttonPrefab;
@@ -600,30 +616,17 @@ public class loadGallery : MonoBehaviour
     bool SendPosCancel = false;
     object lockme = new object();
 
-    /*
-    SaveInfo makeSaveInfos()
-    {
-        SaveInfo ret;
-
-        ret.appName = appName;
-        ret.mainKey = wallet.mainKey;
-
-        return ret;
-    }
-    */
-
     // Start is called before the first frame update
     void Start()
     {
         canSnap[0] = true;
         canSnap[1] = true;
 
-        wallet = new Wallet();
-        wallet.load();
+        //wallet = new Wallet();
+        Wallet.Init();
+        Wallet.load();
 
         room = GameObject.Find("Room").GetComponent<vrRoom>();
-        room.setECDomain(wallet.domainParams, wallet.mainKey.PubAddr) ;
-
         nodes = GameObject.Find("Nodes").GetComponent<Nodes>();
         nodes.setRoom(room);
 
@@ -633,13 +636,7 @@ public class loadGallery : MonoBehaviour
         galleriesAddress = GameObject.Find("Address Value");
         galleriesAddress.GetComponentInChildren<InputField>().text = address;
 
-        /*
-        Node SeedNode = new Node(nodes.seedNodeAdress, nodes.seedNodePort, true);
-
-        NodesList = new List<Node>();
-        NodesList.Add(SeedNode);
-        */
-
+ 
         nodesTable = new itemTable(new string[] { "adress", "ip", "port", "ping" }, 40.0f);
         walletTable = new itemTable(new string[] { "label", "adress", "owner" }, 65.0f);
         avatarTable = new itemTable(new string[] { "label", "adress", "owner" }, 65.0f);
@@ -673,7 +670,7 @@ public class loadGallery : MonoBehaviour
             Me.avatar[n] = 0;
         }
 
-        Me.pkey = wallet.mainKey.getPub().Q.GetEncoded(true);
+        Me.pkey = Wallet.mainKey.getPub().Q.GetEncoded(true);
 
         lastMove = Time.time;
 
@@ -809,6 +806,13 @@ public class loadGallery : MonoBehaviour
             walletTable.NodeRow = null;
         }
 
+        indexPanel.GetComponent<GridLayoutGroup>().constraint = GridLayoutGroup.Constraint.Flexible;
+        indexPanel.GetComponent<GridLayoutGroup>().constraintCount = 2;
+
+        indexPanel.GetComponent<GridLayoutGroup>().cellSize = new Vector2(50.0f, 40.0f);
+        indexPanel.GetComponent<GridLayoutGroup>().spacing = new Vector2(10.0f, 10.0f);
+
+
         selectedMenu = -1;
     }
     
@@ -835,7 +839,7 @@ public class loadGallery : MonoBehaviour
         roomName.GetComponent<InputField>().text = room.roomName;
 
         newButton.GetComponent<Button>().onClick.AddListener(() => room.newRoom());
-        saveButton.GetComponent<Button>().onClick.AddListener(() => room.saveAllScenes(wallet.mainKey));
+        saveButton.GetComponent<Button>().onClick.AddListener(() => room.saveAllScenes());
         editButton.GetComponent<Button>().onClick.AddListener(() => room.roomEditor());
         roomName.GetComponent<InputField>().onValueChanged.AddListener(room.setName);
 
@@ -1031,9 +1035,9 @@ public class loadGallery : MonoBehaviour
 
     void selectAddress(int locn, bool priv)
     {
-        Debug.Log("addr sel " + wallet.addresses[locn].PubAddr);
+        Debug.Log("addr sel " + Wallet.addresses[locn].PubAddr);
 
-        galleriesAddress.GetComponentInChildren<InputField>().text = wallet.addresses[locn].PubAddr;
+        galleriesAddress.GetComponentInChildren<InputField>().text = Wallet.addresses[locn].PubAddr;
 
         for (int n = 0; n < walletTable.NodeRow.Length; n++)
         {
@@ -1066,8 +1070,8 @@ public class loadGallery : MonoBehaviour
 
         WalletAddress address = new WalletAddress(Label, curAddr);
 
-        wallet.addresses.Add(address);
-        wallet.save();
+        Wallet.addresses.Add(address);
+        Wallet.save();
         WalletMenuClicked();
 
     }
@@ -1080,8 +1084,6 @@ public class loadGallery : MonoBehaviour
         bool found;
 
 
-        contentPanel.GetComponent<GridLayoutGroup>().cellSize = new Vector2(50.0f, 30.0f);
-        contentPanel.GetComponent<GridLayoutGroup>().spacing = new Vector2(10.0f, 10.0f);
 
         var panel = GameObject.Find("Panel");
 
@@ -1091,6 +1093,16 @@ public class loadGallery : MonoBehaviour
         MenuItems[3].GetComponentInChildren<Renderer>().material = selectedSphereMat;
 
         ClearTabs();
+
+
+        contentPanel.GetComponent<GridLayoutGroup>().cellSize = new Vector2(50.0f, 30.0f);
+        contentPanel.GetComponent<GridLayoutGroup>().spacing = new Vector2(10.0f, 10.0f);
+
+        indexPanel.GetComponent<GridLayoutGroup>().cellSize = new Vector2(45.0f, 30.0f);
+        indexPanel.GetComponent<GridLayoutGroup>().spacing = new Vector2(0.0f, 10.0f);
+
+        indexPanel.GetComponent<GridLayoutGroup>().constraint = GridLayoutGroup.Constraint.FixedColumnCount;
+        indexPanel.GetComponent<GridLayoutGroup>().constraintCount = 2;
 
         selectedMenu = 4;
 
@@ -1119,31 +1131,43 @@ public class loadGallery : MonoBehaviour
         Headers[1].transform.localScale = new Vector3(0.4f, 0.2f, 1.0f);
         Headers[1].transform.SetParent(panel.transform, false);
 
-        walletTable.NodeRow = new NodeTableRow[wallet.addresses.Count];
+        walletTable.NodeRow = new NodeTableRow[Wallet.addresses.Count];
 
 
         nWallets = 0;
         nContacts = 0;
         found = false;
 
-        for (int n = 0; n < wallet.addresses.Count; n++)
+        for (int n = 0; n < Wallet.addresses.Count; n++)
         {
             walletTable.NodeRow[n] = new NodeTableRow();
             walletTable.NodeRow[n].Columns = new GameObject[1];
 
-            if (wallet.addresses[n].PrivKey != null)
+            if (Wallet.addresses[n].PrivKey != null)
             {
                 walletTable.NodeRow[n].Columns[0] = Instantiate(Resources.Load("ButtonKey")) as GameObject;
                 if (walletTable.NodeRow[n].Columns[0] != null)
                 {
                     int locn = n;
+
+                    ulong balance;
+
+                    balance = nodes.getBalance(Wallet.addresses[n].PubAddr);
                     
-                    walletTable.NodeRow[n].Columns[0].GetComponentInChildren<Text>().text = wallet.addresses[n].Name;
+                    walletTable.NodeRow[n].Columns[0].GetComponentInChildren<Text>().text = Wallet.addresses[n].Name;
                     walletTable.NodeRow[n].Columns[0].GetComponent<Button>().onClick.AddListener(() => selectAddress( locn, true));
 
                     walletTable.NodeRow[n].Columns[0].transform.position = new Vector3(StartPos[0], startY + StartPos[1] + (nWallets + 1) * Spacing[1], 0);
                     walletTable.NodeRow[n].Columns[0].transform.localScale = new Vector3(0.4f, 1.0f, 1.0f);
                     walletTable.NodeRow[n].Columns[0].transform.SetParent(indexPanel.transform, false);
+
+
+                    emptyResult = new GameObject();
+                    emptyResult.AddComponent<Text>().text = (balance / Wallet.ONE_COIN).ToString("0.0000");
+                    emptyResult.GetComponent<Text>().font = textFont;
+                    emptyResult.GetComponent<Text>().alignment = TextAnchor.MiddleCenter;
+                    emptyResult.transform.localScale = new Vector3(0.4f, 1.0f, 1.0f);
+                    emptyResult.transform.SetParent(indexPanel.transform, false);
 
                     nWallets++;
                 }
@@ -1156,7 +1180,7 @@ public class loadGallery : MonoBehaviour
                 {
                     int locn = n;
                     
-                    walletTable.NodeRow[n].Columns[0].GetComponentInChildren<Text>().text = wallet.addresses[n].Name;
+                    walletTable.NodeRow[n].Columns[0].GetComponentInChildren<Text>().text = Wallet.addresses[n].Name;
                     walletTable.NodeRow[n].Columns[0].GetComponent<Button>().onClick.AddListener(() => selectAddress(locn, false));
 
                     walletTable.NodeRow[n].Columns[0].transform.position = new Vector3(StartPos[0] + 100.0f, startY + StartPos[1] + (nContacts + 1) * Spacing[1], 0);
@@ -1167,7 +1191,7 @@ public class loadGallery : MonoBehaviour
                 }
             }
 
-            if (curAddr == wallet.addresses[n].PubAddr)
+            if (curAddr == Wallet.addresses[n].PubAddr)
             {
                 walletTable.NodeRow[n].Columns[0].AddComponent<Outline>();
                 walletTable.NodeRow[n].Columns[0].GetComponent<Outline>().effectColor = new Color(255, 0, 0, 255);
@@ -1671,7 +1695,7 @@ public class loadGallery : MonoBehaviour
                     myMe.pos = new Vector3(Me.pos.x, Me.pos.y, Me.pos.z);
                     myMe.rot = new Quaternion(Me.rot.x, Me.rot.y, Me.rot.z, Me.rot.w);
                 }
-                nodes.sendroomUserTx(room.roomHash, myMe, wallet.mainKey, wallet.domainParams);
+                nodes.sendroomUserTx(room.roomHash, myMe, Wallet.mainKey, Wallet.domainParams);
             }
 
             timeM = (int)((DateTimeOffset.Now.ToUnixTimeMilliseconds() - lastMove) * 1000);
