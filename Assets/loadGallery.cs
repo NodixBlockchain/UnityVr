@@ -1752,8 +1752,13 @@ public class loadGallery : MonoBehaviour
             }
         }
 
+
+
         if (selectedAvatar != null)
+        {
             selectedAvatar.transform.Rotate(0, 100 * Time.deltaTime, 0);
+        }
+            
 
 
         if (room.isEditingWall())

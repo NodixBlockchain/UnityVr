@@ -520,8 +520,11 @@ public class vrRoom : MonoBehaviour
     public bool newObj(appObj parent, appObj child)
     {
         if (this.roomHash == null)
+        {
+            Debug.Log("no room hash");
             return false;
-
+        }
+      
         if ((parent.type & 0x00FFFFFF) != roomTypeId)
             return false;
 

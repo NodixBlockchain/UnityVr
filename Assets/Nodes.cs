@@ -992,7 +992,7 @@ public class Node
                     }
                 }
 
-                /*Debug.Log("get inv message "+ hashstr);*/
+                Debug.Log("get inv message "+ hashstr);
 
                 ReceivePacketHDR();
             }
@@ -1047,7 +1047,7 @@ public class Node
                 }
                 ReceivePacketHDR();
 
-                /*Debug.Log("get tx message " + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(transaction.hash));*/
+                Debug.Log("get tx message " + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(transaction.hash));
             }
             else
                 client.BeginReceive(msg.buffer, 0, (int)(msg.hdr.size - msg.m.Position), 0, new AsyncCallback(ReceiveTxCallBack), msg);
@@ -2605,7 +2605,7 @@ public class Nodes : MonoBehaviour
 
             tx.hash = hash;
 
-            if(ProcessTx(tx,out infos))
+            if(ProcessTx(tx, false, out infos))
                 return infos.obj;
         }
 
@@ -2902,7 +2902,7 @@ public class Nodes : MonoBehaviour
         return false;
     }
 
-    bool ProcessTx(Tx tx,out TxInfos infos)
+    bool ProcessTx(Tx tx, bool doUTXO, out TxInfos infos)
     {
         TxInfos txi= new TxInfos();
 
@@ -2925,8 +2925,9 @@ public class Nodes : MonoBehaviour
             key[33] = (byte)((tx.inputs[ni].utxo >> 8) & 0xFF);
             key[34] = (byte)((tx.inputs[ni].utxo >> 16) & 0xFF);
             key[35] = (byte)((tx.inputs[ni].utxo >> 24) & 0xFF);
-
-            utxostorage.Remove(new BigInteger(key));
+            
+            if (doUTXO)
+                utxostorage.Remove(new BigInteger(key));
 
 
             if (compareHash(tx.inputs[ni].txid, Nodes.nullHash) ==0 )
@@ -2993,11 +2994,11 @@ public class Nodes : MonoBehaviour
                         return false;
 
                 }
-                /*Debug.Log("app Item " + txi.app.name +" "+ txi.item);*/
+                Debug.Log("app Item " + txi.app.name +" "+ txi.item);
             }
             else if((txi.childOf = findAppObj(tx.inputs[ni].txid)) != null)
             {
-                /*Debug.Log("new child of " + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(tx.inputs[ni].txid));*/
+                Debug.Log("new child of " + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(tx.inputs[ni].txid));
             }
         }
 
@@ -3039,22 +3040,25 @@ public class Nodes : MonoBehaviour
                         infos = txi;
                         return false;
                     }
-                    if (Wallet.hasAddress(txi.obj.addr))
-                    {
-                        utxo UTXO = new utxo();
 
-                        UTXO.addr = txi.obj.addr;
-                        UTXO.amount = tx.outputs[no].amount;
-                        UTXO.objh = new byte[32];
-
-                        for (int n = 0; n < 32; n++)
+                    if (doUTXO)
+                    { 
+                        if (Wallet.hasAddress(txi.obj.addr))
                         {
-                            UTXO.objh[n] = tx.hash[n];
+                            utxo UTXO = new utxo();
+
+                            UTXO.addr = txi.obj.addr;
+                            UTXO.amount = tx.outputs[no].amount;
+                            UTXO.objh = new byte[32];
+
+                            for (int n = 0; n < 32; n++)
+                            {
+                                UTXO.objh[n] = tx.hash[n];
+                            }
+
+                            utxostorage.Set(new BigInteger(key), UTXO);
                         }
-
-                        utxostorage.Set(new BigInteger(key), UTXO);
                     }
-
                     txi.child = null;
                 }
                 /* child object */
@@ -3115,55 +3119,62 @@ public class Nodes : MonoBehaviour
                         txi.obj.type = typeid;
                         txi.obj.txh = tx.hash;
                         appObjs.Add(txi.obj);
+                        if (doUTXO)
+                        { 
+                            if (Wallet.hasAddress(txi.obj.addr))
+                            {
+                                utxo UTXO = new utxo();
+                                UTXO.addr = txi.obj.addr;
+                                UTXO.amount = tx.outputs[no].amount;
+                                UTXO.objh = new byte[32];
 
+                                for (int n = 0; n < 32; n++)
+                                {
+                                    UTXO.objh[n] = tx.hash[n];
+                                }
+                                utxostorage.Set(new BigInteger(key), UTXO);
+                            }
+                        }
+                        Debug.Log("new app object " + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(tx.hash));
+                    }
+                }
+                /* object transfer */
+                else if (parseObjScript(tx.outputs[no].script, out addr, out objHash))
+                {
+                    if (doUTXO)
+                    {
                         if (Wallet.hasAddress(txi.obj.addr))
                         {
                             utxo UTXO = new utxo();
+
                             UTXO.addr = txi.obj.addr;
                             UTXO.amount = tx.outputs[no].amount;
                             UTXO.objh = new byte[32];
 
                             for (int n = 0; n < 32; n++)
                             {
-                                UTXO.objh[n] = tx.hash[n];
+                                UTXO.objh[n] = objHash[n];
                             }
                             utxostorage.Set(new BigInteger(key), UTXO);
                         }
-
-                        /*Debug.Log("new app object " + Org.BouncyCastle.Utilities.Encoders.Hex.ToHexString(tx.hash));*/
-                    }
-                }
-                /* object transfer */
-                else if (parseObjScript(tx.outputs[no].script, out addr, out objHash))
-                {
-                    if (Wallet.hasAddress(txi.obj.addr))
-                    {
-                        utxo UTXO = new utxo();
-
-                        UTXO.addr = txi.obj.addr;
-                        UTXO.amount = tx.outputs[no].amount;
-                        UTXO.objh = new byte[32];
-
-                        for (int n = 0; n < 32; n++)
-                        {
-                            UTXO.objh[n] = objHash[n];
-                        }
-                        utxostorage.Set(new BigInteger(key), UTXO);
                     }
                     txi.child = null;
                 }
             }
             else if (parseOutScript(tx.outputs[no].script, out addr))
             {
-                if(Wallet.hasAddress(addr))
+                if (doUTXO)
                 {
-                    utxo UTXO= new utxo();
+                    if (Wallet.hasAddress(addr))
+                    {
+                        utxo UTXO = new utxo();
 
-                    UTXO.addr = addr;
-                    UTXO.amount = tx.outputs[no].amount;
-                    UTXO.objh = null;
+                        UTXO.addr = addr;
+                        UTXO.amount = tx.outputs[no].amount;
+                        UTXO.objh = null;
 
-                    utxostorage.Set(new BigInteger(key), UTXO);
+                        utxostorage.Set(new BigInteger(key), UTXO);
+                    }
                 }
             }
         }
@@ -3206,7 +3217,7 @@ public class Nodes : MonoBehaviour
             TxInfos infos;
             Tx tx = txstorage.Get(k);
             tx.hash = Hash(Hash(TXtoBytes(tx)));
-            ProcessTx(tx,out infos);
+            ProcessTx(tx, false, out infos);
             return;
         }
 
@@ -3555,7 +3566,7 @@ public class Nodes : MonoBehaviour
                     if (check_branch(tx, blk.merkle_root))
                     {
                         TxInfos infos;
-                        if (ProcessTx(tx.tx, out infos))
+                        if (ProcessTx(tx.tx,true, out infos))
                         {
                             if ((infos.childOf != null) && (infos.child != null))
                                 room.newObj(infos.childOf, infos.child);
@@ -3583,7 +3594,7 @@ public class Nodes : MonoBehaviour
                     if (!txstorage.Exists(new BigInteger(tx.hash)))
                     {
                         TxInfos infos;
-                        if (ProcessTx(tx, out infos))
+                        if (ProcessTx(tx,false, out infos))
                         {
                             if ((infos.childOf != null) && (infos.child != null))
                                 room.newObj(infos.childOf, infos.child);

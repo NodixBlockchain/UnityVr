@@ -196,7 +196,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 032d347a063161e4fbbdeb086f88d721, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  seedNodeAdress: nodix.eu
+  seedNodeAdress: 192.168.0.103
   seedNodePort: 16819
 --- !u!4 &38116314
 Transform:
@@ -3346,7 +3346,7 @@ MonoBehaviour:
   SphereEditMat: {fileID: 2100000, guid: 48752f96bd0a6eb4b92b42b8922434d7, type: 2}
   roomName: 
   wallHeight: 10
-  server: nodix.eu
+  server: 192.168.0.103
   floorPlane: {fileID: 1278510965}
   mainPanel: {fileID: 2004535454}
   roomHash: 
