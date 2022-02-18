@@ -3,7 +3,7 @@
     "m_SelectedPackage": {
         "deviceId": "1WMHH84A091283",
         "name": "com.Nodix.NodixVr",
-        "processId": 2883,
+        "processId": 5606,
         "exited": false
     },
     "m_SelectedPriority": 0,
@@ -41,12 +41,6 @@
         {
             "deviceId": "1WMHH84A091283",
             "name": "com.Nodix.NodixVr",
-            "processId": 15363,
-            "exited": true
-        },
-        {
-            "deviceId": "1WMHH84A091283",
-            "name": "com.Nodix.NodixVr",
             "processId": 16543,
             "exited": true
         },
@@ -72,6 +66,18 @@
             "deviceId": "1WMHH84A091283",
             "name": "com.Nodix.NodixVr",
             "processId": 2883,
+            "exited": true
+        },
+        {
+            "deviceId": "1WMHH84A091283",
+            "name": "com.Nodix.NodixVr",
+            "processId": 5606,
+            "exited": false
+        },
+        {
+            "deviceId": "1WMHH84A091283",
+            "name": "com.oculus.os.clearactivity",
+            "processId": 22649,
             "exited": false
         }
     ],
@@ -125,7 +131,7 @@
         "MemoryGroup": 2,
         "Behavior": 0
     },
-    "m_Filter": "",
+    "m_Filter": "app Item",
     "m_FilterIsRegularExpression": false,
     "m_SymbolPaths": []
 }

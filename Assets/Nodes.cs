@@ -100,6 +100,13 @@ public struct blockheader
     public uint height;
 }
 
+public class lasthdr
+{
+    public uint time;
+    public uint dtime;
+    public uint bits;
+}
+
 
 public struct TransactionInput
 {
@@ -131,6 +138,7 @@ public struct Tx
     public TransactionOutput[] outputs;
     public uint locktime;
     public long size;
+    public byte[] blkHash;
 }
 
 
@@ -1460,6 +1468,12 @@ public class appObj
 
 }
 
+public struct chainhead
+{
+    public lasthdr lastPOW;
+    public lasthdr lastPOS;
+    public lasthdr lastBlk;
+}
 
 public class Nodes : MonoBehaviour
 {
@@ -1477,6 +1491,13 @@ public class Nodes : MonoBehaviour
     bool recvHDR = false;
     bool recvApps = false;
     bool sendingPos = false;
+    chainhead ChainHead;
+
+    const uint diff_limit = 0x1E0FFFFF;
+    const uint pos_diff_limit = 0x1B00FFFF;
+    const uint MaxTargetSpacing = 640;
+    const uint nTargetTimespan = 960;
+    const uint TargetSpacing = 64;
 
     vrRoom room;
 
@@ -2119,6 +2140,90 @@ public class Nodes : MonoBehaviour
     }
 
 
+    public static Tx sBytestoTX(byte[] data)
+    {
+        Tx tx = new Tx();
+        MemoryStream buffer = new MemoryStream(data);
+        BinaryReader reader = new BinaryReader(buffer);
+        long cnt;
+
+        tx.version = reader.ReadUInt32();
+        tx.time = reader.ReadUInt32();
+
+        cnt = Nodes.readVINT(reader);
+
+        tx.inputs = new TransactionInput[cnt];
+
+        for (int n = 0; n < cnt; n++)
+        {
+            long len;
+
+            tx.inputs[n].txid = reader.ReadBytes(32);
+            tx.inputs[n].utxo = reader.ReadUInt32();
+
+            len = Nodes.readVINT(reader);
+            tx.inputs[n].script = reader.ReadBytes((int)len);
+            tx.inputs[n].sequence = reader.ReadUInt32();
+        }
+
+        cnt = Nodes.readVINT(reader);
+
+        tx.outputs = new TransactionOutput[cnt];
+
+        for (int n = 0; n < cnt; n++)
+        {
+            long len;
+            tx.outputs[n].amount = reader.ReadUInt64();
+            len = Nodes.readVINT(reader);
+            tx.outputs[n].script = reader.ReadBytes((int)len);
+        }
+
+        tx.locktime = reader.ReadUInt32();
+        tx.blkHash = reader.ReadBytes(32);
+
+        tx.size = buffer.Position;
+
+        return tx;
+    }
+    public static byte[] sTXtoBytes(Tx tx)
+    {
+        MemoryStream buffer = new MemoryStream();
+        BinaryWriter writer = new BinaryWriter(buffer);
+
+        writer.Write(tx.version);
+        writer.Write(tx.time);
+
+        Nodes.writeVINT((ulong)tx.inputs.Length, writer);
+
+        for (int n = 0; n < tx.inputs.Length; n++)
+        {
+            writer.Write(tx.inputs[n].txid);
+            writer.Write(tx.inputs[n].utxo);
+            Nodes.writeVINT((ulong)tx.inputs[n].script.Length, writer);
+            writer.Write(tx.inputs[n].script);
+            writer.Write(tx.inputs[n].sequence);
+        }
+
+        Nodes.writeVINT((ulong)tx.outputs.Length, writer);
+
+
+        for (int n = 0; n < tx.outputs.Length; n++)
+        {
+            writer.Write(tx.outputs[n].amount);
+            Nodes.writeVINT((ulong)tx.outputs[n].script.Length, writer);
+            writer.Write(tx.outputs[n].script);
+        }
+
+        writer.Write(tx.locktime);
+        writer.Write(tx.blkHash);
+
+        byte[] ret = new byte[buffer.Position];
+
+        Buffer.BlockCopy(buffer.ToArray(), 0, ret, 0, (int)buffer.Position);
+
+        return ret;
+    }
+
     public List<byte[]> block_locator_indexes()
     {
         byte[] hash;
@@ -2200,6 +2305,7 @@ public class Nodes : MonoBehaviour
 
 
         loadApps();
+        
 
         NodesList = new List<Node>();
         NodesList.Add(new Node(seedNodeAdress, seedNodePort, true, myIP));
@@ -2243,8 +2349,8 @@ public class Nodes : MonoBehaviour
         settings3.AutoFlushTimeout = TimeSpan.FromMilliseconds(50);
 
         txstorage = new StorageFactory().CreateBPlusTreeStorage<BigInteger, Tx>(
-        p => TXtoBytes(p),      // value serialization
-        p => BytestoTX(p),     // value deserialization
+        p => sTXtoBytes(p),      // value serialization
+        p => sBytestoTX(p),     // value deserialization
         settings3);
 
         txstorage.OpenOrCreate(Application.persistentDataPath + "/tx");
@@ -2263,13 +2369,51 @@ public class Nodes : MonoBehaviour
 
 
         if (block_height == 0)
+        {
             makeGenesisBlock();
+        }
+
 
         block_height = (uint)blksIdxtorage.Count() - 1;
 
         nextGetHeaders = System.DateTimeOffset.Now.ToUnixTimeMilliseconds() + 1000;
 
+        loadChainHead();
+
         /*testStore();*/
+    }
+
+    public void saveChainHead()
+    {
+        string basePath = Application.persistentDataPath + "/";
+
+        if (!Directory.Exists(basePath))
+            Directory.CreateDirectory(basePath);
+
+        XmlSerializer serializer = new XmlSerializer(typeof(chainhead));
+        StreamWriter writer = new StreamWriter(basePath + "/head.xml");
+        serializer.Serialize(writer.BaseStream, ChainHead);
+        writer.Close();
+    }
+
+    public void loadChainHead()
+    {
+        string basePath = Application.persistentDataPath + "/";
+
+        if (File.Exists(basePath + "/head.xml"))
+        {
+
+            XmlSerializer serializer = new XmlSerializer(typeof(chainhead));
+            StreamReader reader = new StreamReader(basePath + "/head.xml");
+            ChainHead = (chainhead)serializer.Deserialize(reader.BaseStream);
+            reader.Close();
+        }
+        else
+        {
+            ChainHead.lastPOW = null;
+            ChainHead.lastPOS = null;
+            ChainHead.lastBlk = null;
+        }
     }
 
     public void setRoom(vrRoom room)
@@ -3037,6 +3181,7 @@ public class Nodes : MonoBehaviour
                     ApplicationType type = findAppType(txi.app, typeid);
                     if (type == null)
                     {
+                        Debug.Log("app type not found");
                         infos = txi;
                         return false;
                     }
@@ -3106,6 +3251,7 @@ public class Nodes : MonoBehaviour
                 ApplicationType type = findAppType(txi.app, typeid);
                 if (type == null)
                 {
+                    Debug.Log("app type not found");
                     infos = txi;
                     return false;
                 }
@@ -3423,6 +3569,136 @@ public class Nodes : MonoBehaviour
 
     }
 
+    public static uint toCompact(BigInteger value)
+    {
+        uint result;
+        uint size = (uint)value.ToByteArray().Length;
+       
+        result = (uint)(value >> (8 * ((int)size - 3)));
+        result |= size << 24;
+
+        return result;
+    }
+    public static BigInteger fromCompact(uint bits)
+    {
+        BigInteger ret;
+        int nSize = (int)(bits >> 24);
+
+        ret = new BigInteger(bits & 0x00FFFFFF);
+        ret = ret << ((nSize - 3) * 8);
+        return ret;
+    }
+
+    uint block_compute_pow_target(uint nActualSpacing, uint nBits)
+    {
+        BigInteger Difflimit;
+        uint nInterval;
+        BigInteger mulop, dividend;
+        BigInteger bpBits;
+
+        if (nActualSpacing == 0)
+        {
+            return diff_limit;
+        }
+
+        if (nActualSpacing > MaxTargetSpacing)
+            nActualSpacing = MaxTargetSpacing;
+
+        nInterval = nTargetTimespan / TargetSpacing;
+        mulop = new BigInteger(((nInterval - 1) * TargetSpacing + nActualSpacing + nActualSpacing));
+        dividend = new BigInteger(((nInterval + 1) * TargetSpacing));
+
+        bpBits = fromCompact(nBits)  * mulop / dividend;
+        Difflimit = fromCompact(diff_limit);
+
+        if (bpBits > Difflimit)
+            bpBits = Difflimit;
+
+        return toCompact(bpBits);
+    }
+    uint scale_compact(uint nBits, ulong mop, ulong dop)
+    {
+        uint size;
+        uint ret;
+        uint bdata;
+        ulong data;
+        ulong mask = ~0xFFFFFFUL;
+        size = (nBits >> 24);
+        data = ((ulong)(nBits & 0xFFFFFF) * mop )/ dop;
+
+        while ((data & mask) !=0)
+        {
+            data >>= 8; 
+            size++;
+        }
+
+        bdata = (uint)data & 0x00FFFFFF;
+        ret = ((size & 0xFF) << 24) | bdata;
+
+        return ret;
+    }
+    uint block_compute_pos_target2(uint nActualSpacing, uint nBits)
+    {
+        BigInteger Difflimit;
+        uint nInterval;
+        uint mulop, dividend;
+        BigInteger bpBits;
+
+        
+        if (nActualSpacing == 0xFFFFFFFF)
+        {
+            return pos_diff_limit;
+        }
+
+
+        if (nActualSpacing > TargetSpacing * 10)
+            nActualSpacing = TargetSpacing * 10;
+
+        nInterval = nTargetTimespan / TargetSpacing;
+        mulop = (nInterval - 1) * TargetSpacing + nActualSpacing + nActualSpacing;
+        dividend = (nInterval + 1) * TargetSpacing;
+
+        //bpBits = (fromCompact(nBits) * mulop) / dividend;
+        
+        uint bp = scale_compact(nBits, mulop, dividend);
+        bpBits  = fromCompact(bp);
+        Difflimit = fromCompact(pos_diff_limit);
+
+        if (bpBits > Difflimit)
+            bp = pos_diff_limit;
+
+        return bp;
+    }
+
+    uint block_compute_pos_target1(uint nActualSpacing, uint nBits)
+    {
+        BigInteger Difflimit;
+        uint nInterval;
+        uint mulop, dividend;
+        BigInteger bpBits;
+
+
+        if (nActualSpacing == 0xFFFFFFFF)
+        {
+            return pos_diff_limit;
+        }
+
+
+        if (nActualSpacing > TargetSpacing * 10)
+            nActualSpacing = TargetSpacing * 10;
+
+        nInterval = nTargetTimespan / TargetSpacing;
+        mulop = (nInterval - 1) * TargetSpacing + nActualSpacing + nActualSpacing;
+        dividend = (nInterval + 1) * TargetSpacing;
+
+        bpBits = (fromCompact(nBits) * mulop) / dividend;
+        Difflimit = fromCompact(pos_diff_limit);
+
+        if (bpBits > Difflimit)
+            bpBits = pos_diff_limit;
+
+        return toCompact(bpBits);
+    }
 
     // Update is called once per frame
     void Update()
@@ -3571,8 +3847,9 @@ public class Nodes : MonoBehaviour
                             if ((infos.childOf != null) && (infos.child != null))
                                 room.newObj(infos.childOf, infos.child);
 
-                            if (tx.tx.locktime < 0xFFFFFFFE)
-                                txstorage.Set(new BigInteger(tx.tx.hash), tx.tx);
+                            tx.tx.blkHash = tx.blk;
+
+                            txstorage.Set(new BigInteger(tx.tx.hash), tx.tx);
 
                         }
                     }
@@ -3598,9 +3875,6 @@ public class Nodes : MonoBehaviour
                         {
                             if ((infos.childOf != null) && (infos.child != null))
                                 room.newObj(infos.childOf, infos.child);
-
-                            if (tx.locktime < 0xFFFFFFFE)
-                                txstorage.Set(new BigInteger(tx.hash), tx);
                         }
                     }
                 }
@@ -3615,14 +3889,52 @@ public class Nodes : MonoBehaviour
 
                     for (int nn = 0; nn < NodesList[n].RecvHeaders.Count; nn++)
                     {
-                        if (compareHash(blksIdxtorage.Get(block_height), NodesList[n].RecvHeaders[nn].prev) == 0)
+                        byte[] llastH;
+                        byte[] lastH = blksIdxtorage.Get(block_height);
+                        blockheader lastHDR = blkstorage.Get(new BigInteger(lastH));
+                        blockheader llastHDR;
+
+                        if (block_height>1)
+                        {
+                            llastH = blksIdxtorage.Get(block_height - 1);
+                            llastHDR = blkstorage.Get(new BigInteger(llastH));
+                        }
+
+                        if (compareHash(lastH, NodesList[n].RecvHeaders[nn].prev) == 0)
                         {
                             blockheader blk = NodesList[n].RecvHeaders[nn];
+                            uint dtime;
+
+
                             byte[] b = HDRtoBytes(blk);
                             byte[] h = Nodes.Hashd(b, 80);
 
                             if (blk.isPow)
                             {
+                                if (ChainHead.lastPOW != null)
+                                {
+                                    if (blk.time < ChainHead.lastPOW.time)
+                                    {
+                                        Debug.Log("wrong POW block time ");
+                                        break;
+                                    }
+
+                                    dtime = blk.time - ChainHead.lastPOW.time;
+
+                                    uint nextBits = block_compute_pow_target(ChainHead.lastPOW.dtime, ChainHead.lastPOW.bits);
+                                    
+                                    if ((block_height != 110571) &&(nextBits != NodesList[n].RecvHeaders[nn].bits))
+                                    {
+                                        Debug.Log("wrong POW block diff ");
+                                        break;
+                                    }
+                                }
+                                else
+                                {
+                                    ChainHead.lastPOW = new lasthdr();
+                                    dtime = 0;
+                                }
+
                                 int nSize = (int)(blk.bits >> 24);
                                 byte[] pow = blockPOW(b);
                                 BigInteger Diff, diff;
@@ -3634,11 +3946,57 @@ public class Nodes : MonoBehaviour
                                 string d1 = Diff.ToString("X64");
                                 string d2 = diff.ToString("X64");
 
-                                if (diff < Diff)
-                                    Debug.Log(" block ok \n" + d1 + "\n" + d2);
-                                else
+                                if (diff >= Diff) { 
                                     Debug.Log(" block fail \n" + d1 + "\n" + d2);
+                                    break;
+                                }
+
+                                ChainHead.lastPOW.time = NodesList[n].RecvHeaders[nn].time;
+                                ChainHead.lastPOW.bits = NodesList[n].RecvHeaders[nn].bits;
+                                ChainHead.lastPOW.dtime = dtime;
+
                             }
+                            else
+                            {
+                               
+                                if (ChainHead.lastPOS != null)
+                                {
+                                    if (blk.time < ChainHead.lastPOS.time)
+                                    {
+                                        Debug.Log("wrong POS block time ");
+
+                                        if(block_height != 127042)
+                                            break;
+                                    }
+                                    dtime = NodesList[n].RecvHeaders[nn].time - ChainHead.lastPOS.time;
+
+                                    uint nextBits  = block_compute_pos_target1(ChainHead.lastPOS.dtime, ChainHead.lastPOS.bits);
+                                    uint nextBits2 = block_compute_pos_target2(ChainHead.lastPOS.dtime, ChainHead.lastPOS.bits);
+
+                                    if ((nextBits != NodesList[n].RecvHeaders[nn].bits) && (nextBits2 != NodesList[n].RecvHeaders[nn].bits))
+                                    {
+                                        Debug.Log("wrong POS block diff ");
+                                        break;
+                                    }
+                                }
+                                else
+                                {
+                                    ChainHead.lastPOS = new lasthdr();
+                                    dtime = 0xFFFFFFFF;
+                                }
+                                    
+
+                                ChainHead.lastPOS.time = NodesList[n].RecvHeaders[nn].time;
+                                ChainHead.lastPOS.bits = NodesList[n].RecvHeaders[nn].bits;
+                                ChainHead.lastPOS.dtime = dtime;
+                            }
+
+                            if (ChainHead.lastBlk == null)
+                                ChainHead.lastBlk = new lasthdr();
+
+                            ChainHead.lastBlk.time = NodesList[n].RecvHeaders[nn].time;
+                            ChainHead.lastBlk.bits = NodesList[n].RecvHeaders[nn].bits;
+
                             blockheader bh = NodesList[n].RecvHeaders[nn];
                             bh.height = block_height;
 
@@ -3656,6 +4014,8 @@ public class Nodes : MonoBehaviour
                     }
 
                     NodesList[n].RecvHeaders.Clear();
+
+                    saveChainHead();
 
                     NodesList[n].SendGetDataMessage(mblocks);
 
